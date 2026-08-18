@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tools-service
+  namespace: agentshield
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tools-service
+  template:
+    metadata:
+      labels:
+        app: tools-service
+    spec:
+      containers:
+        - name: tools
+          image: ghcr.io/rharishkarthic/agentshield-tools:latest
+          ports:
+            - containerPort: 8001
+              name: customer-db
+            - containerPort: 8002
+              name: email-svc
+            - containerPort: 8003
+              name: file-svc
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tools-service
+  namespace: agentshield
+spec:
+  ports:
+    - name: customer-db
+      port: 8001
+      targetPort: 8001
+    - name: email-svc
+      port: 8002
+      targetPort: 8002
+    - name: file-svc
+      port: 8003
+      targetPort: 8003
+  selector:
+    app: tools-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-waf
+  namespace: agentshield
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend-waf
+  template:
+    metadata:
+      labels:
+        app: backend-waf
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/rharishkarthic/agentshield-backend:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: agentshield-config
+            - secretRef:
+                name: agentshield-secrets
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-waf-service
+  namespace: agentshield
+spec:
+  ports:
+    - port: 8000
+      targetPort: 8000
+  selector:
+    app: backend-waf
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-waf-hpa
+  namespace: agentshield
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-waf
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-dashboard
+  namespace: agentshield
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend-dashboard
+  template:
+    metadata:
+      labels:
+        app: frontend-dashboard
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/rharishkarthic/agentshield-frontend:latest
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-dashboard-service
+  namespace: agentshield
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: frontend-dashboard
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentshield-ingress
+  namespace: agentshield
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  tls:
+    - hosts:
+        - agentshield.example.com
+      secretName: agentshield-tls
+  rules:
+    - host: agentshield.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-waf-service
+                port:
+                  number: 8000
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-waf-service
+                port:
+                  number: 8000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-dashboard-service
+                port:
+                  number: 80

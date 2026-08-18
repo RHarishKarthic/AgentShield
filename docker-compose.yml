@@ -1,0 +1,121 @@
+# =============================================================================
+# AgentShield — Production-Grade Multi-Service Docker Compose
+# =============================================================================
+# Boots the complete architecture with a single command:
+#   docker compose up --build
+#
+# Services:
+#   - postgres:  PostgreSQL 16 relational database (persistent audit logs & metadata)
+#   - redis:     Redis 7 in-memory cache (sliding-window rate limiting & session sequence state)
+#   - tools:     Downstream Tool Microservices (Customer DB: 8001, Email: 8002, File: 8003)
+#   - backend:   AgentShield WAF Security Gateway (FastAPI on Port 8000)
+#   - frontend:  Real-Time Security Dashboard (React + Nginx on Port 80 / 5173)
+# =============================================================================
+
+services:
+  # --- 1. PostgreSQL Relational Database ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: agentshield-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentshield}
+      POSTGRES_USER: ${POSTGRES_USER:-agentshield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentshield_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentshield}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - agentshield-network
+
+  # --- 2. Redis Fast State Store ---
+  redis:
+    image: redis:7-alpine
+    container_name: agentshield-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - agentshield-network
+
+  # --- 3. Downstream Tool Microservices ---
+  tools:
+    build:
+      context: ./tools
+      dockerfile: Dockerfile
+    container_name: agentshield-tools
+    ports:
+      - "8001:8001"
+      - "8002:8002"
+      - "8003:8003"
+    restart: unless-stopped
+    networks:
+      - agentshield-network
+
+  # --- 4. AgentShield WAF Backend Gateway ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentshield-backend
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-agentshield}
+      POSTGRES_USER: ${POSTGRES_USER:-agentshield}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentshield_dev_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-not-for-production}
+      WAF_API_KEY: ${WAF_API_KEY:-dev-api-key-agentshield-2026}
+      TOOL_CUSTOMER_URL: http://tools:8001
+      TOOL_EMAIL_URL: http://tools:8002
+      TOOL_FILE_URL: http://tools:8003
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tools:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - agentshield-network
+
+  # --- 5. Real-Time Security Dashboard ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agentshield-frontend
+    ports:
+      - "3000:80"
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - agentshield-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  agentshield-network:
+    driver: bridge

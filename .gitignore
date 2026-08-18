@@ -1,0 +1,67 @@
+# =============================================================================
+# Git Ignore — AgentShield
+# =============================================================================
+
+# --- Environment ---
+.env
+.env.local
+.env.production
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.whl
+.venv/
+venv/
+env/
+
+# --- Node ---
+node_modules/
+frontend/dist/
+frontend/build/
+.vite/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Database ---
+*.db
+*.sqlite3
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Coverage ---
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# --- pytest ---
+.pytest_cache/
+
+# --- mypy ---
+.mypy_cache/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini

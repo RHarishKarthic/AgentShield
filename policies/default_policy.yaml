@@ -1,0 +1,51 @@
+# =============================================================================
+# AgentShield — Default Standard Security Policy
+# =============================================================================
+policy_id: support-agent-policy
+name: Support Agent Standard Policy
+description: Enforces production rate limits, injection parameter hygiene, customer data scopes, and sequence workflows.
+mode: enforcement
+
+policy_config:
+  rate_limit:
+    requests: 5
+    window_seconds: 60
+
+  parameter_validation:
+    max_parameter_size: 2048
+    max_total_size: 65536
+    blocked_patterns:
+      - "DROP TABLE"
+      - "--"
+      - "<script>"
+      - "UNION SELECT"
+      - "/etc/shadow"
+      - "../"
+      - ";--"
+      - "eval("
+      - "exec("
+
+  data_scope:
+    customer_ids:
+      - 101
+      - 102
+      - 103
+    allowed_file_paths:
+      - "/data/public/"
+      - "/data/reports/"
+    allowed_email_domains:
+      - "@example.com"
+      - "@enterprise.corp"
+    departments:
+      - "Engineering"
+      - "Marketing"
+      - "Finance"
+
+  sequence_rules:
+    - action: get_customer_data
+      requires:
+        - authenticate_customer
+    - action: update_customer
+      requires:
+        - authenticate_customer
+        - get_customer_data

@@ -1,0 +1,29 @@
+# =============================================================================
+# AgentShield — Shadow Mode Policy
+# =============================================================================
+policy_id: shadow-audit-policy
+name: Shadow Mode Calibration Policy
+description: Evaluates rules and logs WOULD_BLOCK audit records without blocking live agent execution.
+mode: shadow
+
+policy_config:
+  rate_limit:
+    requests: 3
+    window_seconds: 60
+
+  parameter_validation:
+    max_parameter_size: 1024
+    max_total_size: 32768
+    blocked_patterns:
+      - "DROP TABLE"
+      - "SELECT *"
+
+  data_scope:
+    customer_ids:
+      - 101
+      - 102
+
+  sequence_rules:
+    - action: get_customer_data
+      requires:
+        - authenticate_customer

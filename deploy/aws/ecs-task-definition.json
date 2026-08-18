@@ -1,0 +1,83 @@
+{
+  "family": "agentshield-production",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/agentshieldTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "backend-waf",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/agentshield-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "POSTGRES_HOST", "value": "agentshield-db.xyz.us-east-1.rds.amazonaws.com" },
+        { "name": "POSTGRES_PORT", "value": "5432" },
+        { "name": "POSTGRES_DB", "value": "agentshield" },
+        { "name": "REDIS_HOST", "value": "agentshield-redis.xyz.cache.amazonaws.com" },
+        { "name": "REDIS_PORT", "value": "6379" },
+        { "name": "TOOL_CUSTOMER_URL", "value": "http://127.0.0.1:8001" },
+        { "name": "TOOL_EMAIL_URL", "value": "http://127.0.0.1:8002" },
+        { "name": "TOOL_FILE_URL", "value": "http://127.0.0.1:8003" }
+      ],
+      "secrets": [
+        {
+          "name": "POSTGRES_USER",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:agentshield/db-user"
+        },
+        {
+          "name": "POSTGRES_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:agentshield/db-pass"
+        },
+        {
+          "name": "SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:agentshield/secret-key"
+        },
+        {
+          "name": "WAF_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:agentshield/waf-api-key"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/agentshield",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "backend"
+        }
+      }
+    },
+    {
+      "name": "tools-services",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/agentshield-tools:latest",
+      "essential": true,
+      "portMappings": [
+        { "containerPort": 8001, "protocol": "tcp" },
+        { "containerPort": 8002, "protocol": "tcp" },
+        { "containerPort": 8003, "protocol": "tcp" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/agentshield",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "tools"
+        }
+      }
+    }
+  ]
+}
