@@ -157,18 +157,24 @@ export const CustomDispatcher: React.FC<CustomDispatcherProps> = ({ onExecuted }
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, color: result.status === 'ALLOW' ? 'var(--accent-allow)' : result.status === 'BLOCK' ? 'var(--accent-block)' : 'var(--accent-shadow)' }}>
               {result.status === 'ALLOW' ? <CheckCircle size={16} /> : result.status === 'BLOCK' ? <XCircle size={16} /> : <AlertTriangle size={16} />}
-              WAF STATUS: {result.status || 'RESPONSE RECEIVED'}
+              WAF DECISION: {result.status || 'PROCESSED'}
             </span>
             {result.waf_evaluation?.execution_time_ms && (
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                {result.waf_evaluation.execution_time_ms} ms
+                Evaluation Latency: {result.waf_evaluation.execution_time_ms} ms
               </span>
             )}
           </div>
 
-          {result.error && (
+          {result.status === 'BLOCK' && result.waf_evaluation?.reason && (
             <div style={{ color: 'var(--accent-block)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
-              <strong>Block Reason:</strong> {result.error}
+              <strong>WAF Block Reason:</strong> {result.waf_evaluation.reason}
+            </div>
+          )}
+
+          {result.status === 'ALLOW' && result.error && (
+            <div style={{ color: 'var(--accent-shadow)', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+              <strong>Downstream Service Response:</strong> {result.error}
             </div>
           )}
 

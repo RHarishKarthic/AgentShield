@@ -50,6 +50,7 @@ async def list_customers() -> list[dict[str, Any]]:
 
 
 @app.post("/authenticate")
+@app.post("/authenticate_customer")
 async def authenticate_customer(req: AuthRequest) -> dict[str, Any]:
     """
     Authenticate customer session.
@@ -74,6 +75,7 @@ async def authenticate_customer(req: AuthRequest) -> dict[str, Any]:
 
 
 @app.post("/get_customer")
+@app.post("/get_customer_data")
 @app.get("/customers/{customer_id}")
 async def get_customer(customer_id: int | None = None, body: CustomerQueryRequest | None = None) -> dict[str, Any]:
     """Retrieve customer profile."""

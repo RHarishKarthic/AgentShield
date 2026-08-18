@@ -4,6 +4,7 @@ WAF Downstream Tool Forwarder.
 Responsible for safely dispatching ALLOWED requests to target tool APIs.
 """
 
+import os
 from typing import Any
 
 import httpx
@@ -21,7 +22,16 @@ class ToolForwarder:
 
     @staticmethod
     def _build_target_url(tool: Tool, operation: str | None) -> str:
-        base = tool.endpoint_url.rstrip("/")
+        # Check environment variable overrides (e.g. inside Docker where tools are at http://tools:8001)
+        env_override = None
+        if tool.tool_id == "customer_database":
+            env_override = os.getenv("TOOL_CUSTOMER_URL")
+        elif tool.tool_id == "email_service":
+            env_override = os.getenv("TOOL_EMAIL_URL")
+        elif tool.tool_id == "file_service":
+            env_override = os.getenv("TOOL_FILE_URL")
+
+        base = (env_override or tool.endpoint_url).rstrip("/")
         if operation:
             op_clean = operation.strip().lstrip("/")
             return f"{base}/{op_clean}"

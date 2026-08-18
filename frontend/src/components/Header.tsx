@@ -1,95 +1,79 @@
 import React from 'react';
-import { Shield, ShieldAlert, Activity, RefreshCw } from 'lucide-react';
+import { RefreshCw, PlayCircle, ShieldCheck, ChevronDown, Sun, Moon } from 'lucide-react';
 import { WSStatus } from '../hooks/useWebSocket';
-import { Policy } from '../types';
 
 interface HeaderProps {
-  wsStatus: WSStatus;
-  policies: Policy[];
-  activePolicy: Policy | null;
-  onSwitchPolicyMode: (policyId: string, mode: 'enforcement' | 'shadow') => void;
   onRefresh: () => void;
+  onOpenTester: () => void;
+  wsStatus: WSStatus;
+  isRefreshing: boolean;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  wsStatus,
-  policies,
-  activePolicy,
-  onSwitchPolicyMode,
   onRefresh,
+  onOpenTester,
+  wsStatus,
+  isRefreshing,
+  theme,
+  onToggleTheme,
 }) => {
   return (
-    <header className="header glass-panel">
-      <div className="brand-section">
-        <div className="brand-logo">
-          <Shield size={24} />
-        </div>
-        <div className="brand-title">
-          <h1>AgentShield WAF</h1>
-          <p>Autonomous AI Security Gateway &middot; Real-Time Interception</p>
-        </div>
+    <header className="top-header">
+      <div className="header-left">
+        <h1 className="page-title">Security Overview</h1>
+        <p className="page-subtitle">AI agent traffic, policy enforcement and threat activity</p>
       </div>
 
-      <div className="header-status">
-        {activePolicy && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Policy Mode:</span>
-            <button
-              onClick={() =>
-                onSwitchPolicyMode(
-                  activePolicy.policy_id,
-                  activePolicy.mode === 'enforcement' ? 'shadow' : 'enforcement'
-                )
-              }
-              style={{
-                padding: '0.35rem 0.75rem',
-                borderRadius: '6px',
-                border: '1px solid',
-                borderColor:
-                  activePolicy.mode === 'enforcement'
-                    ? 'var(--accent-allow-border)'
-                    : 'var(--accent-shadow-border)',
-                background:
-                  activePolicy.mode === 'enforcement'
-                    ? 'var(--accent-allow-bg)'
-                    : 'var(--accent-shadow-bg)',
-                color:
-                  activePolicy.mode === 'enforcement'
-                    ? 'var(--accent-allow)'
-                    : 'var(--accent-shadow)',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontFamily: 'var(--font-mono)',
-              }}
-              title="Click to toggle between Enforcement and Shadow calibration mode"
-            >
-              {activePolicy.mode.toUpperCase()} MODE
-            </button>
-          </div>
-        )}
+      <div className="header-right">
+        {/* Environment Selector */}
+        <select className="select-control" defaultValue="Production">
+          <option value="Production">Env: Production (us-east-1)</option>
+          <option value="Staging">Env: Staging (us-east-2)</option>
+          <option value="Development">Env: Dev Cluster (local)</option>
+        </select>
 
-        <div className="pulse-badge">
-          <div className={`pulse-dot ${wsStatus}`} />
-          <span>LIVE TELEMETRY {wsStatus.toUpperCase()}</span>
+        {/* Time Range */}
+        <select className="select-control" defaultValue="24h">
+          <option value="1h">Last 1 hour</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="all">All Time</option>
+        </select>
+
+        {/* Status Indicator */}
+        <div className="status-pill-active">
+          <div className="status-dot-active" />
+          <span>Protection active</span>
         </div>
 
+        {/* Theme Toggle Button */}
         <button
-          onClick={onRefresh}
-          style={{
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            color: 'var(--text-secondary)',
-            padding: '0.4rem',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          title="Refresh statistics"
+          className="btn-icon"
+          onClick={onToggleTheme}
+          title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
         >
-          <RefreshCw size={16} />
+          {theme === 'light' ? <Moon size={14} /> : <Sun size={14} color="#FBBF24" />}
+        </button>
+
+        {/* Refresh Control */}
+        <button
+          className="btn-icon"
+          onClick={onRefresh}
+          title="Refresh Data"
+        >
+          <RefreshCw size={14} className={isRefreshing ? 'spin' : ''} />
+        </button>
+
+        {/* Quick Simulation / Test Trigger */}
+        <button
+          className="btn-primary"
+          onClick={onOpenTester}
+          title="Open Threat Simulator & Test Gateway"
+        >
+          <PlayCircle size={14} />
+          <span>Simulate / Test</span>
         </button>
       </div>
     </header>

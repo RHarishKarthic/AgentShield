@@ -50,6 +50,15 @@ async def run_demo():
             print(f"    Exception: {e}")
             return
 
+        # Attempt to reset rate limit state in Redis for clean demo
+        try:
+            import redis.asyncio as aioredis
+            r_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            await r_client.flushdb()
+            await r_client.aclose()
+        except Exception:
+            pass
+
         # ---------------------------------------------------------------------
         # SCENARIO 1: Normal Authorized Call
         # ---------------------------------------------------------------------
@@ -81,14 +90,8 @@ async def run_demo():
         )
         ms = (time.perf_counter() - t0) * 1000
         d1 = r1.json()
-        print_result(
-            1,
-            "Authorized Customer Query",
-            "ALLOW",
-            d1.get("status"),
-            str(d1.get("result", {}).get("customer", {}).get("name")),
-            ms,
-        )
+        cust_name = d1.get("result", {}).get("customer", {}).get("name") if d1.get("result") else d1.get("detail", d1.get("error"))
+        print_result(1, "Authorized Customer Query", "ALLOW", d1.get("status"), str(cust_name), ms)
 
         # ---------------------------------------------------------------------
         # SCENARIO 2: Rate Limit Burst
@@ -250,31 +253,28 @@ async def run_demo():
         # ---------------------------------------------------------------------
         print_banner("SCENARIO 7: Legitimate Multi-Step Workflow Sequence")
         sess_7 = f"demo-fullflow-sess-{int(time.time())}"
+        seq_agent = "support-agent"
+        # Reset ratelimit for customer_database so sequence can complete
+        try:
+            r_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+            await r_client.delete(f"ratelimit:{seq_agent}:customer_database")
+            await r_client.aclose()
+        except Exception:
+            pass
+
         # Step 1: Authenticate
         s1_res = await client.post(
             INTERCEPT_URL,
-            json={
-                "agent_id": "support-agent",
-                "tool": "customer_database",
-                "operation": "authenticate",
-                "parameters": {"customer_id": 101},
-                "session_id": sess_7,
-            },
-            headers={"X-Agent-API-Key": "agent-key-support-001"},
+            json={"agent_id": seq_agent, "tool": "customer_database", "operation": "authenticate", "parameters": {"customer_id": 102}, "session_id": sess_7},
+            headers={"X-Agent-API-Key": "agent-key-support-001"}
         )
         print(f"       Step 1 (authenticate): {s1_res.json().get('status')} (HTTP {s1_res.status_code})")
 
         # Step 2: Get Customer
         s2_res = await client.post(
             INTERCEPT_URL,
-            json={
-                "agent_id": "support-agent",
-                "tool": "customer_database",
-                "operation": "get_customer",
-                "parameters": {"customer_id": 101},
-                "session_id": sess_7,
-            },
-            headers={"X-Agent-API-Key": "agent-key-support-001"},
+            json={"agent_id": seq_agent, "tool": "customer_database", "operation": "get_customer", "parameters": {"customer_id": 102}, "session_id": sess_7},
+            headers={"X-Agent-API-Key": "agent-key-support-001"}
         )
         print(f"       Step 2 (get_customer): {s2_res.json().get('status')} (HTTP {s2_res.status_code})")
 
@@ -282,25 +282,13 @@ async def run_demo():
         t0 = time.perf_counter()
         s3_res = await client.post(
             INTERCEPT_URL,
-            json={
-                "agent_id": "support-agent",
-                "tool": "customer_database",
-                "operation": "update_customer",
-                "parameters": {"customer_id": 101, "notes": "Verified VIP account"},
-                "session_id": sess_7,
-            },
-            headers={"X-Agent-API-Key": "agent-key-support-001"},
+            json={"agent_id": seq_agent, "tool": "customer_database", "operation": "update_customer", "parameters": {"customer_id": 102, "notes": "Verified VIP account"}, "session_id": sess_7},
+            headers={"X-Agent-API-Key": "agent-key-support-001"}
         )
         ms = (time.perf_counter() - t0) * 1000
         d7 = s3_res.json()
-        print_result(
-            7,
-            "Complete Multi-Step Sequence Flow",
-            "ALLOW",
-            d7.get("status"),
-            str(d7.get("result", {}).get("message")),
-            ms,
-        )
+        result_msg = d7.get("result", {}).get("message") if d7.get("result") else d7.get("detail", d7.get("error"))
+        print_result(7, "Complete Multi-Step Sequence Flow", "ALLOW", d7.get("status"), str(result_msg), ms)
 
         # ---------------------------------------------------------------------
         # SCENARIO 8: Shadow Mode Calibration

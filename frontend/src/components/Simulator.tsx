@@ -30,10 +30,22 @@ export const Simulator: React.FC<SimulatorProps> = ({ onTriggered }) => {
     setRunning('rate_limit');
     try {
       const sessId = `sim-burst-${Date.now()}`;
-      await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, sessId);
       let lastRes = null;
+      // Send 6 rapid tool calls to email_service (limit is 5 calls / 60s)
       for (let i = 1; i <= 6; i++) {
-        lastRes = await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'get_customer', { customer_id: 101 }, sessId);
+        lastRes = await triggerToolCall(
+          'support-agent',
+          'agent-key-support-001',
+          'email_service',
+          'send',
+          {
+            recipient: `user${i}@example.com`,
+            subject: `Burst Notice ${i}`,
+            body: `Automated test message ${i}`,
+            email_type: 'internal',
+          },
+          sessId
+        );
       }
       setLastOutput(lastRes);
       onTriggered();
