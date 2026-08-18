@@ -4,6 +4,7 @@ import { MetricsOverview } from './components/MetricsOverview';
 import { RuleBreakdownChart } from './components/RuleBreakdownChart';
 import { LiveEventFeed } from './components/LiveEventFeed';
 import { Simulator } from './components/Simulator';
+import { CustomDispatcher } from './components/CustomDispatcher';
 import { useWebSocket } from './hooks/useWebSocket';
 import { fetchMetrics, fetchAuditLogs, fetchPolicies, updatePolicyMode } from './services/api';
 import { AuditEvent, MetricsData, Policy } from './types';
@@ -109,6 +110,8 @@ export const App: React.FC = () => {
           />
         </div>
       </div>
+
+      <CustomDispatcher onExecuted={refreshData} />
     </div>
   );
 };
