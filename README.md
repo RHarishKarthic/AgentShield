@@ -1,7 +1,8 @@
 # 🛡️ AgentShield — The Autonomous AI Agent WAF
-> **Enterprise Agentic Security Gateway**  
+> **Enterprise Agentic Security Gateway**
+> **Unit 5  Agentic AI Security - PS-5.1 The Agent WAF**
 > *Web Application Firewall for AI Agent Tool Invocations*
-> Unit 5  Agentic AI Security - PS-5.1 The Agent WAF
+> 
 
 [![CI Pipeline](https://github.com/RHarishKarthic/AgentShield/actions/workflows/ci.yml/badge.svg)](https://github.com/RHarishKarthic/AgentShield/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
