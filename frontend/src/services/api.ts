@@ -1,9 +1,19 @@
 import { AuditEvent, MetricsData, Policy, Tool, Agent } from '../types';
 
-// In production on Render, VITE_API_BASE is the full backend public URL
-// e.g. https://agentshield-backend-xxxx.onrender.com/api/v1
-// In local dev it falls back to the nginx proxy path /api/v1
-const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
+// Priority order for API base URL:
+// 1. Runtime config injected by Docker entrypoint at startup (window.__AGENTSHIELD_CONFIG__)
+//    → used on Render, Kubernetes, or any container platform (no rebuild needed to change URL)
+// 2. VITE_API_BASE build-time env var → used if baked in at build time
+// 3. /api/v1 relative path → used in local Docker Compose (nginx proxy handles it)
+declare global {
+  interface Window {
+    __AGENTSHIELD_CONFIG__?: { apiBase?: string };
+  }
+}
+const API_BASE =
+  window.__AGENTSHIELD_CONFIG__?.apiBase ||
+  import.meta.env.VITE_API_BASE ||
+  '/api/v1';
 
 export async function fetchMetrics(): Promise<MetricsData> {
   const res = await fetch(`${API_BASE}/metrics`);

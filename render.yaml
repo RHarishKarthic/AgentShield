@@ -48,8 +48,8 @@ services:
         value: "8001"
 
   # 3. Frontend SOC Dashboard
-  # IMPORTANT: After first deploying the backend, replace YOUR_BACKEND_URL below
-  # with the actual backend URL (e.g. https://agentshield-backend-xxxx.onrender.com/api/v1)
+  # API_BASE is injected at runtime by start.sh into /config.js
+  # Set this to your actual backend public URL from Render dashboard
   - type: web
     name: agentshield-frontend
     runtime: docker
@@ -57,8 +57,8 @@ services:
     dockerContext: frontend
     plan: free
     region: oregon
-    dockerBuildArgs:
-      - name: VITE_API_BASE
+    envVars:
+      - key: API_BASE
         value: "https://agentshield-backend-8hwf.onrender.com/api/v1"
 
   # 4. Redis In-Memory Store
