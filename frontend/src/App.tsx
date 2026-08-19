@@ -190,6 +190,7 @@ export const App: React.FC = () => {
             <AgentPoliciesView
               policies={policies}
               onToggleMode={handleToggleMode}
+              onRefresh={loadData}
             />
           )}
 

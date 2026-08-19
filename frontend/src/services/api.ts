@@ -61,6 +61,23 @@ export async function updatePolicyMode(policyId: string, mode: 'enforcement' | '
   return res.json();
 }
 
+export async function createPolicy(policyData: any): Promise<Policy> {
+  const base = getApiBase();
+  const res = await fetch(`${base}/policies`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': 'dev-api-key-agentshield-2026',
+    },
+    body: JSON.stringify(policyData),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to create policy: ${res.statusText}`);
+  }
+  return res.json();
+}
+
 export async function fetchTools(): Promise<Tool[]> {
   const base = getApiBase();
   const res = await fetch(`${base}/tools`);
