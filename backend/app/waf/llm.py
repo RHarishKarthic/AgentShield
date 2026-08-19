@@ -1,5 +1,5 @@
 """
-LLM Provider Abstraction.
+LLM Provider Abstraction for AgentShield WAF & Agent Runtime.
 
 Supports swappable LLM engines:
 - Groq Cloud (Free ultra-fast Llama 3.3 70B & Llama 3.1 8B)
@@ -17,7 +17,23 @@ from typing import Any
 
 import httpx
 
-from agent.config import config
+AVAILABLE_TOOLS = [
+    {
+        "name": "customer_database",
+        "description": "Enterprise customer management database",
+        "operations": ["authenticate", "get_customer", "update_customer"],
+    },
+    {
+        "name": "email_service",
+        "description": "Outbound email notification dispatcher",
+        "operations": ["send", "batch_send"],
+    },
+    {
+        "name": "file_service",
+        "description": "Secure file storage system",
+        "operations": ["read", "write", "delete"],
+    },
+]
 
 
 class BaseLLMProvider(ABC):
@@ -30,9 +46,6 @@ class BaseLLMProvider(ABC):
         available_tools: list[dict[str, Any]],
         conversation_history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """
-        Reason about the user request and return structured tool invocation.
-        """
         pass
 
 
@@ -60,8 +73,8 @@ class GroqProvider(BaseLLMProvider):
     ) -> dict[str, Any]:
         if not self.api_key:
             return {
-                "thought": "Groq API key not configured. Please provide a GROQ_API_KEY.",
-                "final_answer": "Error: Groq API key is missing. Set GROQ_API_KEY in your environment.",
+                "thought": "Groq API key not provided. Set GROQ_API_KEY or provide an API key in the tester.",
+                "final_answer": "Error: Groq API key is missing. Please provide a free Groq key or use the Mock engine.",
             }
 
         tools_desc = json.dumps(available_tools, indent=2)
@@ -110,7 +123,7 @@ class GroqProvider(BaseLLMProvider):
 class OllamaProvider(BaseLLMProvider):
     """Local Ollama LLM provider."""
 
-    def __init__(self, base_url: str = config.ollama_base_url, model: str = config.ollama_model):
+    def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3.2"):
         self.base_url = base_url.rstrip("/")
         self.model = model
 
@@ -168,10 +181,10 @@ class OpenAIProvider(BaseLLMProvider):
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = config.openai_model,
-        base_url: str = config.openai_base_url,
+        model: str = "gpt-4o-mini",
+        base_url: str = "https://api.openai.com/v1",
     ):
-        self.api_key = api_key or config.openai_api_key or os.getenv("OPENAI_API_KEY", "")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY", "")
         self.model = model
         self.base_url = base_url.rstrip("/")
 
@@ -306,13 +319,13 @@ def get_llm_provider(
     model: str | None = None,
 ) -> BaseLLMProvider:
     """Factory to instantiate the requested or configured LLM provider."""
-    provider = (provider_name or config.llm_provider or "auto").lower()
+    provider = (provider_name or "auto").lower()
 
     if provider == "groq" or (provider == "auto" and (api_key or os.getenv("GROQ_API_KEY"))):
         return GroqProvider(api_key=api_key, model=model or "llama-3.3-70b-versatile")
-    elif provider == "openai" and (api_key or config.openai_api_key):
-        return OpenAIProvider(api_key=api_key, model=model or config.openai_model)
+    elif provider == "openai" and (api_key or os.getenv("OPENAI_API_KEY")):
+        return OpenAIProvider(api_key=api_key, model=model or "gpt-4o-mini")
     elif provider == "ollama":
-        return OllamaProvider(model=model or config.ollama_model)
+        return OllamaProvider(model=model or "llama3.2")
 
     return RuleBasedMockProvider()

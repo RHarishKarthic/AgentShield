@@ -70,3 +70,26 @@ export async function triggerToolCall(
   });
   return res.json();
 }
+
+export async function executeAgentPrompt(
+  prompt: string,
+  provider: string = 'auto',
+  apiKey?: string,
+  model?: string,
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/waf/prompt`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt,
+      provider,
+      api_key: apiKey || undefined,
+      model: model || undefined,
+    }),
+  });
+  return res.json();
+}
+
+

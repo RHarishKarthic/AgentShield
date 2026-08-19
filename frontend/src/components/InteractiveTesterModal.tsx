@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Play, Zap, ShieldAlert, Database, Lock, Eye, Send, Sparkles, Loader2 } from 'lucide-react';
-import { triggerToolCall } from '../services/api';
+import { X, Play, Zap, ShieldAlert, Database, Lock, Eye, Send, Sparkles, Loader2, Bot, Cpu } from 'lucide-react';
+import { triggerToolCall, executeAgentPrompt } from '../services/api';
 
 interface InteractiveTesterModalProps {
   isOpen: boolean;
@@ -21,7 +21,11 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
   const [tool, setTool] = useState('customer_database');
   const [operation, setOperation] = useState('get_customer');
   const [paramsText, setParamsText] = useState('{\n  "customer_id": 101\n}');
-  const [agentPrompt, setAgentPrompt] = useState('Authenticate customer 101 and fetch profile balance');
+  
+  // Real LLM Agent state
+  const [agentPrompt, setAgentPrompt] = useState('Authenticate customer 101 and fetch their profile balance');
+  const [llmProvider, setLlmProvider] = useState<'auto' | 'groq' | 'openai' | 'ollama' | 'mock'>('auto');
+  const [customApiKey, setCustomApiKey] = useState('');
 
   if (!isOpen) return null;
 
@@ -57,31 +61,8 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
     e.preventDefault();
     setRunningId('agent');
     try {
-      const promptLower = agentPrompt.toLowerCase();
-      let t = 'customer_database';
-      let op = 'get_customer';
-      let p: any = { customer_id: 101 };
-      const sess = `prompt-${Date.now()}`;
-
-      if (promptLower.includes('drop table')) {
-        op = 'update_customer';
-        p = { customer_id: 101, name: "Alice'; DROP TABLE customers;--" };
-      } else if (promptLower.includes('999')) {
-        p = { customer_id: 999 };
-      } else if (promptLower.includes('/etc/shadow')) {
-        t = 'file_service';
-        op = 'read';
-        p = { file_path: '/etc/shadow' };
-      } else if (promptLower.includes('email')) {
-        t = 'email_service';
-        op = 'send';
-        p = { recipient: 'team@example.com', subject: 'Notice', body: agentPrompt };
-      } else {
-        await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, sess);
-      }
-
-      const res = await triggerToolCall('support-agent', 'agent-key-support-001', t, op, p, sess);
-      setOutput({ agent_prompt: agentPrompt, tool_executed: t, operation: op, result: res });
+      const res = await executeAgentPrompt(agentPrompt, llmProvider, customApiKey);
+      setOutput(res);
       onTriggered();
     } catch (err: any) {
       setOutput({ error: err.message });
@@ -94,7 +75,7 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
     <div className="drawer-backdrop" onClick={onClose}>
       <div
         style={{
-          width: '640px',
+          width: '680px',
           maxWidth: '92vw',
           maxHeight: '88vh',
           background: 'var(--bg-surface)',
@@ -112,7 +93,7 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-default)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface-subtle)' }}>
           <div>
             <h2 style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>WAF Interactive Threat & Scenario Simulator</h2>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Execute live security attack scenarios and test custom payloads against the gateway</p>
+            <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Execute tactical attacks or test live LLM autonomous agents through the WAF</p>
           </div>
           <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
             <X size={16} />
@@ -137,7 +118,7 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
             className={`segmented-btn ${activeTab === 'agent' ? 'active' : ''}`}
             onClick={() => setActiveTab('agent')}
           >
-            AI Agent Instruction
+            Live LLM AI Agent
           </button>
         </div>
 
@@ -299,20 +280,56 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
 
           {activeTab === 'agent' && (
             <form onSubmit={handleAgentPromptSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    LLM Reasoning Engine
+                  </label>
+                  <select
+                    className="select-control"
+                    style={{ width: '100%' }}
+                    value={llmProvider}
+                    onChange={(e: any) => setLlmProvider(e.target.value)}
+                  >
+                    <option value="auto">Auto (Cloud / Fallback)</option>
+                    <option value="groq">Groq Cloud (Llama 3.3 70B - Free / Fast)</option>
+                    <option value="openai">OpenAI (GPT-4o-mini)</option>
+                    <option value="ollama">Local Ollama (llama3.2)</option>
+                    <option value="mock">Deterministic Mock Engine</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                    API Key (Optional / Env fallback)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="gsk_... or sk-..."
+                    value={customApiKey}
+                    onChange={(e) => setCustomApiKey(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', fontSize: '12px' }}
+                  />
+                </div>
+              </div>
+
               <div>
-                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Natural Language Task / Attack Instruction</label>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  Natural Language Task or Prompt Injection Instruction
+                </label>
                 <input
                   type="text"
                   value={agentPrompt}
                   onChange={(e) => setAgentPrompt(e.target.value)}
-                  placeholder="e.g. Read file /etc/shadow or Authenticate customer 101..."
+                  placeholder="e.g. Authenticate customer 101 and fetch profile..."
                   style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)', fontSize: '12px' }}
                 />
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button type="submit" className="btn-primary" disabled={runningId !== null}>
-                  <Sparkles size={13} /> <span>Execute via Autonomous Agent</span>
+                  {runningId === 'agent' ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />}
+                  <span>{runningId === 'agent' ? 'LLM Reasoning...' : 'Execute with Real LLM'}</span>
                 </button>
               </div>
             </form>
@@ -320,8 +337,8 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
 
           {output && (
             <div style={{ marginTop: '6px', padding: '10px', background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-default)' }}>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Gateway Response:</div>
-              <pre style={{ margin: 0, padding: '8px', background: '#0B0F19', color: '#98A2B3', borderRadius: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', maxHeight: '120px', overflowY: 'auto' }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Gateway & LLM Execution Result:</div>
+              <pre style={{ margin: 0, padding: '8px', background: '#0B0F19', color: '#98A2B3', borderRadius: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)', maxHeight: '140px', overflowY: 'auto' }}>
                 {JSON.stringify(output, null, 2)}
               </pre>
             </div>
