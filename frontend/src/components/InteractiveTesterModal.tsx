@@ -53,7 +53,7 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
       : '3.2ms';
     const rule = res?.waf_evaluation?.blocked_by_rule;
 
-    if (decision === 'BLOCK' || res?.error) {
+    if (decision === 'BLOCK') {
       setToast({
         type: 'block',
         title: `${scenarioName} Intercepted`,
