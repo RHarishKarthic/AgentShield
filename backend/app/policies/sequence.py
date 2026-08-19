@@ -20,7 +20,7 @@ from app.schemas.waf import ToolCallRequest
 
 logger = get_logger(__name__)
 
-# In-memory session history fallback
+# In-memory session history fallback for offline/disconnected environments
 _IN_MEMORY_SESSIONS: dict[str, list[str]] = defaultdict(list)
 
 
@@ -87,7 +87,6 @@ class SequenceRule(BaseRule):
                 break
 
         if not matching_rule:
-            # Action has no prerequisites, but record it in session history
             await self._record_action(redis_client, session_id, current_action)
             return True, None
 
@@ -105,9 +104,9 @@ class SequenceRule(BaseRule):
                 history_set = set(history)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Redis sequence history fallback to in-memory: {e!s}")
-                history_set = set(_IN_MEMORY_SESSIONS[session_id])
+                history_set = set(_IN_MEMORY_SESSIONS.get(session_id, []))
         else:
-            history_set = set(_IN_MEMORY_SESSIONS[session_id])
+            history_set = set(_IN_MEMORY_SESSIONS.get(session_id, []))
 
         missing_prereqs = [req for req in prerequisites if req not in history_set]
 
@@ -132,12 +131,13 @@ class SequenceRule(BaseRule):
         return True, None
 
     async def _record_action(self, redis_client: redis.Redis | None, session_id: str, action: str) -> None:
-        """Record completed action into Redis session history with in-memory mirror."""
-        _IN_MEMORY_SESSIONS[session_id].append(action)
+        """Record completed action into Redis session history with in-memory fallback."""
         if redis_client is not None:
             try:
                 redis_key = f"session:sequence:{session_id}"
                 await redis_client.rpush(redis_key, action)
                 await redis_client.expire(redis_key, 3600)
+                return
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Failed to record action in Redis sequence: {e!s}")
+        _IN_MEMORY_SESSIONS[session_id].append(action)

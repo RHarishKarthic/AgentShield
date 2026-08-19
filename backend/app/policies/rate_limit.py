@@ -81,7 +81,6 @@ class RateLimitRule(BaseRule):
 
         # In-memory sliding window fallback
         timestamps = _IN_MEMORY_WINDOWS[redis_key]
-        # Prune expired entries
         _IN_MEMORY_WINDOWS[redis_key] = [t for t in timestamps if t > window_start]
         _IN_MEMORY_WINDOWS[redis_key].append(now)
 

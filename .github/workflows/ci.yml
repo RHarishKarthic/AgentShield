@@ -45,6 +45,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install Dependencies
         run: |
@@ -52,8 +53,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Code Quality & Linting (Ruff)
+        run: |
+          cd backend
+          ruff check .
+
       - name: Run Database Migrations & Seed
         env:
+          DATABASE_URL: postgresql+asyncpg://agentshield:agentshield_dev_password@localhost:5432/agentshield
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_DB: agentshield
@@ -61,8 +68,10 @@ jobs:
           POSTGRES_PASSWORD: agentshield_dev_password
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+          REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci
           WAF_API_KEY: dev-api-key-agentshield-2026
+          PYTHONPATH: .
         run: |
           cd backend
           alembic upgrade head
@@ -70,6 +79,7 @@ jobs:
 
       - name: Run Pytest Test Suite
         env:
+          DATABASE_URL: postgresql+asyncpg://agentshield:agentshield_dev_password@localhost:5432/agentshield
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
           POSTGRES_DB: agentshield
@@ -77,16 +87,13 @@ jobs:
           POSTGRES_PASSWORD: agentshield_dev_password
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+          REDIS_URL: redis://localhost:6379/0
           SECRET_KEY: test-secret-key-for-ci
           WAF_API_KEY: dev-api-key-agentshield-2026
+          PYTHONPATH: .
         run: |
           cd backend
           pytest -v --cov=app --cov-report=term-missing
-
-      - name: Code Quality & Linting (Ruff)
-        run: |
-          cd backend
-          ruff check .
 
   frontend-build:
     name: Frontend Typecheck & Build
