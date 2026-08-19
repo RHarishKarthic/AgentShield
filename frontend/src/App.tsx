@@ -52,6 +52,7 @@ export const App: React.FC = () => {
         fetchMetrics(timeRange),
         fetchAuditLogs(200),
         fetchPolicies(),
+        new Promise((resolve) => setTimeout(resolve, 500)), // Smooth minimum refresh animation
       ]);
       setRawMetrics(m);
       setRawEvents(a.items);
