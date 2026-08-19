@@ -1,0 +1,82 @@
+services:
+  # 1. Backend WAF Gateway Service
+  - type: web
+    name: agentshield-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: ENVIRONMENT
+        value: "production"
+      - key: DEBUG
+        value: "false"
+      - key: WAF_MODE
+        value: "enforcement"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: POSTGRES_SERVER
+        fromDatabase:
+          name: agentshield-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: agentshield-postgres
+          property: port
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: agentshield-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: agentshield-postgres
+          property: password
+      - key: POSTGRES_DB
+        fromDatabase:
+          name: agentshield-postgres
+          property: database
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: agentshield-redis
+          property: connectionString
+
+  # 2. Downstream Mock Tool Microservices
+  - type: web
+    name: agentshield-tools
+    runtime: docker
+    dockerfilePath: tools/Dockerfile
+    dockerContext: tools
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: "8001"
+
+  # 3. Frontend SOC Dashboard (Static Site)
+  - type: web
+    name: agentshield-frontend
+    runtime: docker
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: frontend
+    plan: free
+    region: oregon
+
+databases:
+  # 4. Managed PostgreSQL Database
+  - name: agentshield-postgres
+    plan: free
+    region: oregon
+    databaseName: agentshield
+    user: agentshield_user
+
+  # 5. Redis In-Memory Store
+  - name: agentshield-redis
+    type: redis
+    plan: free
+    region: oregon
+    ipAllowList: [] # internal only
