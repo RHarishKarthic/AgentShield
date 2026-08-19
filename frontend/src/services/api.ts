@@ -1,41 +1,54 @@
 import { AuditEvent, MetricsData, Policy, Tool, Agent } from '../types';
 
-// Priority order for API base URL:
-// 1. Runtime config injected by Docker entrypoint at startup (window.__AGENTSHIELD_CONFIG__)
-//    → used on Render, Kubernetes, or any container platform (no rebuild needed to change URL)
-// 2. VITE_API_BASE build-time env var → used if baked in at build time
-// 3. /api/v1 relative path → used in local Docker Compose (nginx proxy handles it)
 declare global {
   interface Window {
     __AGENTSHIELD_CONFIG__?: { apiBase?: string };
   }
 }
-const API_BASE =
-  window.__AGENTSHIELD_CONFIG__?.apiBase ||
-  import.meta.env.VITE_API_BASE ||
-  '/api/v1';
+
+/**
+ * Dynamically resolves the API base URL.
+ * Checks runtime window config first, then Vite env, and defaults to relative '/api/v1'.
+ */
+export function getApiBase(): string {
+  if (typeof window !== 'undefined' && window.__AGENTSHIELD_CONFIG__?.apiBase) {
+    return window.__AGENTSHIELD_CONFIG__.apiBase.replace(/\/+$/, '');
+  }
+  if (import.meta.env.VITE_API_BASE) {
+    return (import.meta.env.VITE_API_BASE as string).replace(/\/+$/, '');
+  }
+  return '/api/v1';
+}
 
 export async function fetchMetrics(): Promise<MetricsData> {
-  const res = await fetch(`${API_BASE}/metrics`);
-  if (!res.ok) throw new Error('Failed to fetch metrics');
+  const base = getApiBase();
+  const res = await fetch(`${base}/metrics`);
+  if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.statusText}`);
   return res.json();
 }
 
-export async function fetchAuditLogs(limit = 50, offset = 0, filterParams: Record<string, string> = {}): Promise<{ total: number; items: AuditEvent[] }> {
+export async function fetchAuditLogs(
+  limit = 50,
+  offset = 0,
+  filterParams: Record<string, string> = {}
+): Promise<{ total: number; items: AuditEvent[] }> {
+  const base = getApiBase();
   const query = new URLSearchParams({ limit: String(limit), offset: String(offset), ...filterParams });
-  const res = await fetch(`${API_BASE}/audit?${query.toString()}`);
-  if (!res.ok) throw new Error('Failed to fetch audit events');
+  const res = await fetch(`${base}/audit?${query.toString()}`);
+  if (!res.ok) throw new Error(`Failed to fetch audit events: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchPolicies(): Promise<Policy[]> {
-  const res = await fetch(`${API_BASE}/policies`);
-  if (!res.ok) throw new Error('Failed to fetch policies');
+  const base = getApiBase();
+  const res = await fetch(`${base}/policies`);
+  if (!res.ok) throw new Error(`Failed to fetch policies: ${res.statusText}`);
   return res.json();
 }
 
 export async function updatePolicyMode(policyId: string, mode: 'enforcement' | 'shadow'): Promise<Policy> {
-  const res = await fetch(`${API_BASE}/policies/${policyId}`, {
+  const base = getApiBase();
+  const res = await fetch(`${base}/policies/${policyId}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -43,19 +56,21 @@ export async function updatePolicyMode(policyId: string, mode: 'enforcement' | '
     },
     body: JSON.stringify({ mode }),
   });
-  if (!res.ok) throw new Error('Failed to update policy mode');
+  if (!res.ok) throw new Error(`Failed to update policy mode: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchTools(): Promise<Tool[]> {
-  const res = await fetch(`${API_BASE}/tools`);
-  if (!res.ok) throw new Error('Failed to fetch tools');
+  const base = getApiBase();
+  const res = await fetch(`${base}/tools`);
+  if (!res.ok) throw new Error(`Failed to fetch tools: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchAgents(): Promise<Agent[]> {
-  const res = await fetch(`${API_BASE}/agents`);
-  if (!res.ok) throw new Error('Failed to fetch agents');
+  const base = getApiBase();
+  const res = await fetch(`${base}/agents`);
+  if (!res.ok) throw new Error(`Failed to fetch agents: ${res.statusText}`);
   return res.json();
 }
 
@@ -67,7 +82,8 @@ export async function triggerToolCall(
   parameters: Record<string, any>,
   sessionId?: string,
 ): Promise<any> {
-  const res = await fetch(`${API_BASE}/waf/intercept`, {
+  const base = getApiBase();
+  const res = await fetch(`${base}/waf/intercept`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -90,7 +106,8 @@ export async function executeAgentPrompt(
   apiKey?: string,
   model?: string,
 ): Promise<any> {
-  const res = await fetch(`${API_BASE}/waf/prompt`, {
+  const base = getApiBase();
+  const res = await fetch(`${base}/waf/prompt`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -104,5 +121,3 @@ export async function executeAgentPrompt(
   });
   return res.json();
 }
-
-
