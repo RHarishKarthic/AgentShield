@@ -173,24 +173,42 @@ class AuditService:
         return res.scalar_one_or_none()
 
     @staticmethod
-    async def get_metrics(db: AsyncSession) -> MetricsResponse:
+    async def get_metrics(db: AsyncSession, time_range: str | None = None) -> MetricsResponse:
         """
         Compute real-time aggregated metrics for the security dashboard.
+        Supports time filtering (1h, 24h, 7d, all).
         """
+        now = datetime.now(timezone.utc)
+        where_filter = None
+        if time_range == "1h":
+            where_filter = AuditEvent.created_at >= (now - timedelta(hours=1))
+        elif time_range == "24h":
+            where_filter = AuditEvent.created_at >= (now - timedelta(hours=24))
+        elif time_range == "7d":
+            where_filter = AuditEvent.created_at >= (now - timedelta(days=7))
+
         # Total counts by decision
         stmt_total = select(func.count()).select_from(AuditEvent)
+        if where_filter is not None:
+            stmt_total = stmt_total.where(where_filter)
         total_res = await db.execute(stmt_total)
         total = total_res.scalar_one()
 
         stmt_allow = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "ALLOW")
+        if where_filter is not None:
+            stmt_allow = stmt_allow.where(where_filter)
         allow_res = await db.execute(stmt_allow)
         allowed = allow_res.scalar_one()
 
         stmt_block = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "BLOCK")
+        if where_filter is not None:
+            stmt_block = stmt_block.where(where_filter)
         block_res = await db.execute(stmt_block)
         blocked = block_res.scalar_one()
 
         stmt_shadow = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "SHADOW_WOULD_BLOCK")
+        if where_filter is not None:
+            stmt_shadow = stmt_shadow.where(where_filter)
         shadow_res = await db.execute(stmt_shadow)
         shadow = shadow_res.scalar_one()
 
@@ -199,15 +217,17 @@ class AuditService:
         stmt_rule_counts = (
             select(AuditEvent.blocked_by_rule, func.count())
             .where(AuditEvent.blocked_by_rule.isnot(None))
-            .group_by(AuditEvent.blocked_by_rule)
         )
+        if where_filter is not None:
+            stmt_rule_counts = stmt_rule_counts.where(where_filter)
+        stmt_rule_counts = stmt_rule_counts.group_by(AuditEvent.blocked_by_rule)
         rule_res = await db.execute(stmt_rule_counts)
         for rule_name, count in rule_res.all():
             if hasattr(rule_breakdown, rule_name):
                 setattr(rule_breakdown, rule_name, count)
 
         # Requests in last minute (throughput)
-        one_min_ago = datetime.now(timezone.utc) - timedelta(minutes=1)
+        one_min_ago = now - timedelta(minutes=1)
         stmt_rpm = select(func.count()).select_from(AuditEvent).where(AuditEvent.created_at >= one_min_ago)
         rpm_res = await db.execute(stmt_rpm)
         rpm = float(rpm_res.scalar_one())

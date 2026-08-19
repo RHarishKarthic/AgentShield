@@ -49,7 +49,7 @@ export const App: React.FC = () => {
     try {
       setIsRefreshing(true);
       const [m, a, p] = await Promise.all([
-        fetchMetrics(),
+        fetchMetrics(timeRange),
         fetchAuditLogs(200),
         fetchPolicies(),
       ]);
@@ -61,7 +61,7 @@ export const App: React.FC = () => {
     } finally {
       setIsRefreshing(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     loadData();
@@ -92,35 +92,11 @@ export const App: React.FC = () => {
     });
   }, [rawEvents, timeRange]);
 
-  // Dynamically compute metrics based on filtered time range
+  // Use exact database metrics returned from PostgreSQL for the selected timeRange
   const metrics = useMemo<MetricsData | null>(() => {
     if (!rawMetrics) return null;
-
-    // When "All Time" is selected, return the true aggregate database metrics
-    if (timeRange === 'all') {
-      return rawMetrics;
-    }
-
-    // When a specific time window is selected (1h, 24h, 7d), compute from filteredEvents
-    const allowed = filteredEvents.filter((e) => e.decision === 'ALLOW').length;
-    const blocked = filteredEvents.filter((e) => e.decision === 'BLOCK').length;
-    const shadow = filteredEvents.filter((e) => e.decision === 'SHADOW_WOULD_BLOCK').length;
-    const total = filteredEvents.length;
-
-    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : 100.0;
-    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : 0.0;
-
-    return {
-      ...rawMetrics,
-      total_requests: total,
-      allowed_count: allowed,
-      blocked_count: blocked,
-      shadow_count: shadow,
-      allow_percentage,
-      block_percentage,
-      security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 100,
-    };
-  }, [rawMetrics, filteredEvents, timeRange]);
+    return rawMetrics;
+  }, [rawMetrics]);
 
   const activePolicy = policies.find((p) => p.policy_id === 'support-agent-policy') || policies[0] || null;
 

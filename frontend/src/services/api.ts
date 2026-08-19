@@ -20,9 +20,10 @@ export function getApiBase(): string {
   return '/api/v1';
 }
 
-export async function fetchMetrics(): Promise<MetricsData> {
+export async function fetchMetrics(timeRange?: string): Promise<MetricsData> {
   const base = getApiBase();
-  const res = await fetch(`${base}/metrics`);
+  const url = timeRange && timeRange !== 'all' ? `${base}/metrics?time_range=${timeRange}` : `${base}/metrics`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.statusText}`);
   return res.json();
 }
