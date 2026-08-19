@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     )
 
     # --- PostgreSQL ---
+    database_url_env: str | None = Field(
+        default=None,
+        validation_alias="database_url",
+        description="Full PostgreSQL database connection URL from environment (e.g. Render/Heroku)",
+    )
     postgres_host: str = Field(default="localhost", description="PostgreSQL host")
     postgres_port: int = Field(default=5432, description="PostgreSQL port")
     postgres_db: str = Field(default="agentshield", description="PostgreSQL database name")
@@ -59,6 +64,15 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Construct async PostgreSQL connection URL."""
+        if self.database_url_env:
+            url = self.database_url_env
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif not url.startswith("postgresql+asyncpg://"):
+                url = f"postgresql+asyncpg://{url.split('://', 1)[-1]}"
+            return url
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
@@ -67,12 +81,28 @@ class Settings(BaseSettings):
     @property
     def database_url_sync(self) -> str:
         """Construct sync PostgreSQL URL (for Alembic migrations)."""
+        if self.database_url_env:
+            url = self.database_url_env
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+psycopg://", 1)
+            elif url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+            elif url.startswith("postgresql+asyncpg://"):
+                url = url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+            elif not url.startswith("postgresql+psycopg://"):
+                url = f"postgresql+psycopg://{url.split('://', 1)[-1]}"
+            return url
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
     # --- Redis ---
+    redis_url_env: str | None = Field(
+        default=None,
+        validation_alias="redis_url",
+        description="Full Redis connection URL from environment (e.g. Render/Upstash)",
+    )
     redis_host: str = Field(default="localhost", description="Redis host")
     redis_port: int = Field(default=6379, description="Redis port")
     redis_password: str = Field(default="", description="Redis password (empty if none)")
@@ -81,6 +111,8 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         """Construct Redis connection URL."""
+        if self.redis_url_env:
+            return self.redis_url_env
         if self.redis_password:
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
