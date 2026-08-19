@@ -8,6 +8,10 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+# Accept public backend URL at build time for Render / cloud deployments
+ARG VITE_API_BASE=/api/v1
+ENV VITE_API_BASE=$VITE_API_BASE
+
 COPY package*.json ./
 RUN npm ci
 
