@@ -45,8 +45,8 @@ class Settings(BaseSettings):
         description="Secret key for JWT/session signing",
     )
     waf_api_key: str = Field(
-        default="change-me-to-a-strong-api-key",
-        description="API key for authenticating agents to the WAF",
+        default="dev-api-key-agentshield-2026",
+        description="API key for authenticating agents and dashboard to the WAF",
     )
 
     # --- PostgreSQL ---

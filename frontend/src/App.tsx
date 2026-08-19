@@ -111,14 +111,23 @@ export const App: React.FC = () => {
 
   const activePolicy = policies.find((p) => p.policy_id === 'support-agent-policy') || policies[0] || null;
 
-  const handleToggleMode = async () => {
-    if (!activePolicy) return;
-    const newMode = activePolicy.mode === 'enforcement' ? 'shadow' : 'enforcement';
+  const handleToggleMode = async (targetPolicyId?: string) => {
+    const targetPolicy = (typeof targetPolicyId === 'string' && policies.find((p) => p.policy_id === targetPolicyId)) || activePolicy;
+    if (!targetPolicy) return;
+    const newMode = targetPolicy.mode === 'enforcement' ? 'shadow' : 'enforcement';
+    
+    // Optimistic UI update
+    setPolicies((prev) =>
+      prev.map((p) => (p.policy_id === targetPolicy.policy_id ? { ...p, mode: newMode } : p))
+    );
+
     try {
-      await updatePolicyMode(activePolicy.policy_id, newMode);
+      await updatePolicyMode(targetPolicy.policy_id, newMode);
       await loadData();
     } catch (err) {
       console.error('Failed to toggle policy mode:', err);
+      // Revert if API failed
+      await loadData();
     }
   };
 
