@@ -110,7 +110,7 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     cors_origins: str = Field(
-        default="http://localhost:5173,http://localhost:3000",
+        default="http://localhost:5173,http://localhost:3000,https://agentshield-frontend-lrhq.onrender.com,https://*.onrender.com",
         description="Comma-separated list of allowed CORS origins",
     )
 
