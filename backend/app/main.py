@@ -54,8 +54,15 @@ async def lifespan(app: FastAPI):
         extra={"component": "startup", "environment": settings.app_env},
     )
 
-    await init_db()
-    await init_redis()
+    try:
+        await init_db()
+    except Exception as e:
+        logger.error(f"Database initialisation warning: {e}", extra={"error": str(e)})
+
+    try:
+        await init_redis()
+    except Exception as e:
+        logger.error(f"Redis initialisation warning: {e}", extra={"error": str(e)})
 
     logger.info("All services initialised — application ready")
 
@@ -63,8 +70,14 @@ async def lifespan(app: FastAPI):
 
     # --- SHUTDOWN ---
     logger.info("Shutting down...")
-    await close_redis()
-    await close_db()
+    try:
+        await close_redis()
+    except Exception:
+        pass
+    try:
+        await close_db()
+    except Exception:
+        pass
     logger.info("Shutdown complete")
 
 
