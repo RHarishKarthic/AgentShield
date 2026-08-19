@@ -59,7 +59,7 @@ services:
     region: oregon
     envVars:
       - key: API_BASE
-        value: "https://agentshield-backend-8hwf.onrender.com/api/v1"
+        value: "https://agentshield-backend-77dp.onrender.com/api/v1"
 
   # 4. Redis In-Memory Store
   - type: redis
