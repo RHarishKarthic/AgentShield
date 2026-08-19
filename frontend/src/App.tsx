@@ -50,7 +50,7 @@ export const App: React.FC = () => {
       setIsRefreshing(true);
       const [m, a, p] = await Promise.all([
         fetchMetrics(),
-        fetchAuditLogs(100),
+        fetchAuditLogs(200),
         fetchPolicies(),
       ]);
       setRawMetrics(m);
@@ -71,7 +71,7 @@ export const App: React.FC = () => {
 
   // Live WebSocket Event Handler
   const handleLiveEvent = useCallback((event: AuditEvent) => {
-    setRawEvents((prev) => [event, ...prev.slice(0, 99)]);
+    setRawEvents((prev) => [event, ...prev.slice(0, 199)]);
     loadData();
   }, [loadData]);
 
@@ -95,13 +95,20 @@ export const App: React.FC = () => {
   // Dynamically compute metrics based on filtered time range
   const metrics = useMemo<MetricsData | null>(() => {
     if (!rawMetrics) return null;
+
+    // When "All Time" is selected, return the true aggregate database metrics
+    if (timeRange === 'all') {
+      return rawMetrics;
+    }
+
+    // When a specific time window is selected (1h, 24h, 7d), compute from filteredEvents
     const allowed = filteredEvents.filter((e) => e.decision === 'ALLOW').length;
     const blocked = filteredEvents.filter((e) => e.decision === 'BLOCK').length;
     const shadow = filteredEvents.filter((e) => e.decision === 'SHADOW_WOULD_BLOCK').length;
     const total = filteredEvents.length;
 
-    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : (rawMetrics?.allow_percentage ?? 100.0);
-    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : (rawMetrics?.block_percentage ?? 0.0);
+    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : 100.0;
+    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : 0.0;
 
     return {
       ...rawMetrics,
@@ -113,7 +120,7 @@ export const App: React.FC = () => {
       block_percentage,
       security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 100,
     };
-  }, [rawMetrics, filteredEvents]);
+  }, [rawMetrics, filteredEvents, timeRange]);
 
   const activePolicy = policies.find((p) => p.policy_id === 'support-agent-policy') || policies[0] || null;
 
