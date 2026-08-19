@@ -173,14 +173,14 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   runScenario('sqli', async () => {
                     const s = `sqli-${Date.now()}`;
                     await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, s);
-                    return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'update_customer', { customer_id: 101, name: "Alice'; DROP TABLE customers;--" }, s);
+                    return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'update_customer', { customer_id: 101, name: "Alice' UNION SELECT null, password" }, s);
                   })
                 }
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
                   <ShieldAlert size={13} /> 3. SQL Injection Attack
                 </div>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Detected forbidden DROP TABLE pattern</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Detected forbidden UNION SELECT pattern</span>
               </button>
 
               <button
