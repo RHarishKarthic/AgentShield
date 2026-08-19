@@ -11,63 +11,134 @@
 
 ---
 
+## 🌐 Live Production Deployments
+
+| Component | Live Deployment URL | Description |
+| :--- | :--- | :--- |
+| **SOC Dashboard** | [https://agentshield-frontend-lrhq.onrender.com](https://agentshield-frontend-lrhq.onrender.com) | Real-Time React 19 Security Operations Console |
+| **WAF Gateway API** | [https://agentshield-backend-77dp.onrender.com](https://agentshield-backend-77dp.onrender.com) | Core Interception Proxy & Policy Engine (`/docs` available) |
+| **Source Repository** | [https://github.com/RHarishKarthic/AgentShield](https://github.com/RHarishKarthic/AgentShield) | Production Codebase & CI/CD Pipelines |
+
+---
+
 ## 📋 Table of Contents
 - [1. Executive Summary](#1-executive-summary)
-- [2. Architecture & Data Flow](#2-architecture--data-flow)
-- [3. Requirements & Capabilities Traceability Matrix](#3-requirements--capabilities-traceability-matrix)
-- [4. Quickstart Guide](#4-quickstart-guide)
-  - [Option A: Docker Compose (One-Command Startup)](#option-a-docker-compose-one-command-startup)
-  - [Option B: Local Development (Windows / PowerShell)](#option-b-local-development-windows--powershell)
-- [5. Interactive 8-Scenario Demo Walkthrough](#5-interactive-8-scenario-demo-walkthrough)
-- [6. Real-Time Dashboard & Telemetry](#6-real-time-dashboard--telemetry)
-- [7. Policy Specification Reference](#7-policy-specification-reference)
-- [8. REST API Reference](#8-rest-api-reference)
-- [9. Performance & Latency Benchmarks](#9-performance--latency-benchmarks)
-- [10. Automated Testing & Verification](#10-automated-testing--verification)
+- [2. How Enterprise Systems Route Traffic Through AgentShield](#2-how-enterprise-systems-route-traffic-through-agentshield)
+- [3. Architecture & Data Flow](#3-architecture--data-flow)
+- [4. Core Security Guardrails & Policy Matrix](#4-core-security-guardrails--policy-matrix)
+- [5. Requirements Traceability Matrix](#5-requirements-traceability-matrix)
+- [6. Quickstart Guide](#6-quickstart-guide)
+  - [Option A: Docker Compose (One-Command Launch)](#option-a-docker-compose-one-command-launch)
+  - [Option B: Local Development Setup](#option-b-local-development-setup)
+- [7. Interactive Threat & LLM Agent Simulator](#7-interactive-threat--llm-agent-simulator)
+- [8. Real-Time Dashboard & Telemetry](#8-real-time-dashboard--telemetry)
+- [9. REST API & WebSocket Reference](#9-rest-api--websocket-reference)
+- [10. Performance & Latency Benchmarks](#10-performance--latency-benchmarks)
+- [11. Automated Testing & Verification](#11-automated-testing--verification)
 
 ---
 
 ## 1. Executive Summary
 
-Autonomous AI agents leverage Large Language Models (LLMs) to perform tool calling and orchestrate real-world operations (executing SQL queries, dispatching emails, writing files, and modifying records). However, LLMs are vulnerable to indirect prompt injection, tool misuse, privilege escalation, and unintended execution cascades.
+Autonomous AI agents leverage Large Language Models (LLMs) to perform tool calling and orchestrate real-world operations (executing SQL queries, dispatching emails, reading virtual files, and modifying records). However, LLMs are vulnerable to indirect prompt injection, parameter tampering, unauthorized data access, and out-of-order execution cascades.
 
-**AgentShield** is an inline, zero-trust **Agentic Web Application Firewall (WAF)** that sits between autonomous AI agents and downstream enterprise tools. It intercepts, validates, sanitizes, and audits every tool call in real time with sub-5ms latency.
+**AgentShield** is an inline, zero-trust **Agentic Web Application Firewall (WAF)** that sits between autonomous AI agents and downstream enterprise tools. It intercepts, validates, sanitizes, and audits every tool call in real time with **sub-5ms latency**.
 
 ### Core Capabilities:
 - **Distributed Atomic Rate Limiting**: Redis sliding-window rate limiting preventing denial-of-service and runaway tool loops.
 - **Deep Parameter & Injection Inspection**: Recursive validation scanning tool arguments for SQL injection, path traversal, script injection, and oversized payloads.
 - **Data Scope Enforcement**: Restricts access to authorized customer IDs, file paths, email domains, and departments.
 - **Session-Aware Sequence Rules**: Enforces chronological state prerequisites (e.g., must `authenticate_customer` before `get_customer_data` or `update_customer`).
-- **Shadow Calibration Mode (Bonus Requirement)**: Evaluates live traffic against new policies, logging violations without blocking execution.
+- **Shadow Calibration Mode**: Evaluates live traffic against new policies, logging violations without blocking execution.
+- **Native LLM Reasoner Integration**: Built-in support for swappable LLM reasoning providers (Groq Cloud Llama 3.3 70B, OpenAI GPT-4o-mini, Ollama, and Rule-based fallbacks).
 - **Real-Time Streaming Observability**: Live WebSocket telemetry feed, interactive attack simulator, and reactive React 19 dashboard.
 
 ---
 
-## 2. Architecture & Data Flow
+## 2. How Enterprise Systems Route Traffic Through AgentShield
+
+AgentShield is a specialized firewall purpose-built for the AI Agent-to-Tool boundary.
+
+```
+                       BEFORE (Unprotected & Vulnerable)
+┌──────────────┐                                       ┌─────────────────────────┐
+│   AI Agent   │ ────────── Direct Unchecked Call ───► │ Company Internal DB     │
+└──────────────┘                                       └─────────────────────────┘
+
+                       AFTER (Protected by AgentShield)
+┌──────────────┐         1. Intercept Call             ┌─────────────────────────┐
+│   AI Agent   │ ────────────────────────────────────► │     AgentShield WAF     │
+└──────────────┘                                       │     Gateway (:8000)     │
+                                                       └────────────┬────────────┘
+                                                                    │ 2. Evaluates Policy (< 4ms)
+                                                                    │    If Allowed: Forwards
+                                                                    ▼
+                                                       ┌─────────────────────────┐
+                                                       │ Company Internal DB     │
+                                                       │ (Isolated in VPC)       │
+                                                       └─────────────────────────┘
+```
+
+### Integration in 3 Steps:
+
+1. **Point AI Agent Tool Calls to AgentShield**:
+   Instead of calling the database directly, the agent sends its tool call to `POST /api/v1/waf/intercept`:
+   ```python
+   # Protected Tool Call from AI Agent
+   response = requests.post(
+       "https://agentshield-backend-77dp.onrender.com/api/v1/waf/intercept",
+       headers={"X-Agent-API-Key": "agent-key-support-001"},
+       json={
+           "agent_id": "support-agent",
+           "tool": "customer_database",
+           "operation": "get_customer",
+           "parameters": {"customer_id": 101},
+           "session_id": "user-session-123"
+       }
+   )
+   ```
+
+2. **Register Downstream Tool Microservices**:
+   Register internal APIs in AgentShield's Tool Registry (`POST /api/v1/tools`):
+   ```json
+   {
+     "tool_id": "customer_database",
+     "name": "Production Customer DB",
+     "endpoint_url": "https://internal-db.company.internal:8001",
+     "method": "POST"
+   }
+   ```
+
+3. **VPC Network Isolation**:
+   Isolate internal tools and databases in a private network where only the **AgentShield Gateway** is allowed inbound access.
+
+---
+
+## 3. Architecture & Data Flow
 
 ```mermaid
 flowchart TD
     subgraph AgentRuntime["Autonomous Agent Runtime"]
-        UserPrompt["User Prompt / Instruction"] --> LLM["LLM Reasoner (Ollama / OpenAI)"]
+        UserPrompt["User Prompt / Instruction"] --> LLM["LLM Reasoner (Groq / OpenAI / Ollama)"]
         LLM --> ToolCallDecision["Tool Call Selection"]
         ToolCallDecision --> WAFClient["WAF Gateway Client (Strict Routing)"]
     end
 
     subgraph AgentShield["AgentShield Security Gateway (:8000)"]
         WAFClient --> ReverseProxy["WAF Intercept Proxy (/api/v1/waf/intercept)"]
-        ReverseProxy --> AuthCheck["Agent Authentication (HMAC SHA-256)"]
+        ReverseProxy --> AuthCheck["Agent Authentication (HMAC / Key Check)"]
         AuthCheck --> PolicyEngine["Policy Evaluation Engine"]
 
         subgraph Rules["Security Engine Rules"]
             PolicyEngine --> RL["1. Rate Limit Rule (Redis Sliding Window)"]
             PolicyEngine --> PV["2. Parameter Validation Rule (SQLi / XSS)"]
             PolicyEngine --> DS["3. Data Scope Rule (IDs / Paths / Domains)"]
-            PolicyEngine --> SEQ["4. Sequence Rule (Prerequisites)"]
+            PolicyEngine --> SEQ["4. Sequence Rule (Prerequisites DAG)"]
         end
 
         PolicyEngine --> Disposition{"Decision?"}
         Disposition -- "BLOCK" --> Refusal["Synthesize Security Refusal (HTTP 403)"]
-        Disposition -- "SHADOW" --> ShadowLog["Record Violation (Non-blocking)"]
+        Disposition -- "SHADOW" --> ShadowLog["Record Violation (Non-blocking HTTP 200)"]
         Disposition -- "ALLOW" --> Forwarder["Tool Forwarder (Safe HTTP Client)"]
         ShadowLog --> Forwarder
 
@@ -84,127 +155,15 @@ flowchart TD
 
     subgraph Observability["Real-Time Dashboard (:5173 / :80)"]
         WS --> Dashboard["React 19 Security Dashboard"]
-        Dashboard --> SimPanel["1-Click Attack & Scenario Simulator"]
+        Dashboard --> SimPanel["Interactive Threat & LLM Simulator"]
     end
 ```
 
 ---
 
-## 3. Requirements & Capabilities Traceability Matrix
+## 4. Core Security Guardrails & Policy Matrix
 
-| Requirement ID | Security Requirement / Capability | Implementation Component | Verification Test / Evidence |
-|---|---|---|---|
-| **PS5.1-M01** | Intercept tool calls before reaching target API | `app/waf/proxy.py`, `app/api/v1/waf.py` | `test_stage3_waf.py` |
-| **PS5.1-M02** | Declarative Policy Definition (YAML/JSON) | `app/schemas/policy.py`, `policies/*.yaml` | `test_stage2_tools.py` |
-| **PS5.1-M03** | Rule 1: Rate Limiting per agent/tool | `app/policies/rate_limit.py` | `test_criterion_1_rate_limiting`, `test_concurrency.py` |
-| **PS5.1-M04** | Rule 2: Parameter & Injection Inspection | `app/policies/parameter_validation.py` | `test_criterion_2_parameter_injection_block` |
-| **PS5.1-M05** | Rule 3: Data Scope Enforcement | `app/policies/data_scope.py` | `test_criterion_3_out_of_scope_data_block` |
-| **PS5.1-M06** | Rule 4: Action Sequence Rules | `app/policies/sequence.py` | `test_criterion_4_sequence_rule_enforcement` |
-| **PS5.1-M07** | Real-Time Dashboard showing tool traffic | `frontend/src/App.tsx`, `frontend/src/components/*` | `test_stage8_websocket.py`, UI Build |
-| **PS5.1-M08** | Audit log capturing all decisions & redaction | `app/audit/service.py`, `app/audit/sanitizer.py` | `test_stage5_audit.py`, `test_audit_sanitizer.py` |
-| **BONUS** | Shadow Mode (Log without blocking) | `app/waf/engine.py`, `app/waf/proxy.py` | `test_stage6_shadow_mode.py` |
-| **GEN-01-07** | Production Readiness, Docker, CI/CD, Docs | `docker-compose.yml`, `.github/workflows/ci.yml` | Full suite, `run_benchmarks.py` |
-
----
-
-## 4. Quickstart Guide
-
-### Option A: Docker Compose (One-Command Startup)
-The fastest way to launch the complete 5-service architecture:
-
-```powershell
-# From repository root
-docker compose up --build
-```
-
-**Services Launched:**
-- **Frontend Dashboard**: `http://localhost:5173` (or `http://localhost:3000`)
-- **WAF Gateway API**: `http://localhost:8000` (Docs: `http://localhost:8000/docs`)
-- **Customer Microservice**: `http://localhost:8001`
-- **Email Microservice**: `http://localhost:8002`
-- **File Microservice**: `http://localhost:8003`
-- **PostgreSQL Database**: `localhost:5432`
-- **Redis Cache**: `localhost:6379`
-
----
-
-### Option B: Local Development (Windows / PowerShell)
-
-#### 1. Start Infrastructure (PostgreSQL & Redis)
-```powershell
-docker run -d --name agentshield-postgres -e POSTGRES_DB=agentshield -e POSTGRES_USER=agentshield -e POSTGRES_PASSWORD=agentshield_dev_password -p 5432:5432 postgres:16-alpine
-docker run -d --name agentshield-redis -p 6379:6379 redis:7-alpine
-```
-
-#### 2. Start Downstream Microservices
-```powershell
-cd tools
-python run_all_tools.py
-# Running on ports 8001, 8002, 8003
-```
-
-#### 3. Start Backend WAF Gateway
-```powershell
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
-# Run migrations & seed data
-alembic upgrade head
-python ..\scripts\seed_data.py
-
-# Launch FastAPI server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-#### 4. Start React Frontend Dashboard
-```powershell
-cd frontend
-npm install
-npm run dev
-# Dashboard live at http://localhost:5173
-```
-
----
-
-## 5. Interactive 8-Scenario Demo Walkthrough
-
-AgentShield includes an automated CLI demonstration script verifying all 8 security scenarios:
-
-```powershell
-# Run demo script (from repository root)
-python scripts\demo_all_scenarios.py
-```
-
-### Scenario Breakdown:
-1. **Scenario 1 — Normal Authorized Call**: Agent queries customer 101 after authentication &rarr; `ALLOW` (HTTP 200).
-2. **Scenario 2 — Rate Limit Burst**: Agent fires 6 rapid email tool calls against a 5 req/min limit &rarr; 6th call is `BLOCK` (HTTP 403).
-3. **Scenario 3 — SQL Injection Attempt**: Agent passes `'; DROP TABLE customers;--` &rarr; `BLOCK` (HTTP 403).
-4. **Scenario 4 — Out-of-Scope Data Access**: Agent requests customer 999 (authorized: [101, 102, 103]) &rarr; `BLOCK` (HTTP 403).
-5. **Scenario 5 — Path Traversal Attack**: Agent requests `/etc/shadow` &rarr; `BLOCK` (HTTP 403).
-6. **Scenario 6 — Out-of-Order Sequence Violation**: Agent attempts `get_customer` without prior `authenticate_customer` &rarr; `BLOCK` (HTTP 403).
-7. **Scenario 7 — Legitimate Multi-Step Workflow**: Agent executes `authenticate` &rarr; `get_customer` &rarr; `update_customer` &rarr; `ALLOW` (HTTP 200).
-8. **Scenario 8 — Shadow Mode Calibration**: Agent violates policy under shadow mode &rarr; Violation recorded in audit log and WebSocket stream, but tool call succeeds &rarr; `SHADOW_WOULD_BLOCK` (HTTP 200).
-
----
-
-## 6. Real-Time Dashboard & Telemetry
-
-Open `http://localhost:5173` in your browser to access the security console:
-
-- **Live Telemetry Stream**: WebSocket-driven push stream of all intercepted tool calls with sub-second latency.
-- **Compliance & Violation Counters**: Real-time total invocations, compliance rate (%), block rate (%), and shadow calibrations.
-- **Rule Breakdown Visualizer**: Dynamic bar charts showing block distribution by rule engine.
-- **Expandable Audit Drawer**: Inspect correlation IDs, execution time (ms), and PII-sanitized parameters.
-- **Interactive Simulator**: 1-click test triggers directly inside the dashboard.
-- **Policy Mode Switcher**: Toggle policies between `enforcement` and `shadow` mode dynamically.
-
----
-
-## 7. Policy Specification Reference
-
-AgentShield policies are declaratively authored in YAML or JSON:
+AgentShield policies are declaratively defined and hot-reloaded:
 
 ```yaml
 policy_id: "support-agent-policy"
@@ -227,6 +186,8 @@ policy_config:
       - "/etc/shadow"
       - "../"
       - ";--"
+      - "eval("
+      - "exec("
 
   data_scope:
     customer_ids: [101, 102, 103]
@@ -253,14 +214,117 @@ policy_config:
 
 ---
 
-## 8. REST API Reference
+## 5. Requirements Traceability Matrix
+
+| Requirement ID | Security Requirement / Capability | Implementation Component | Verification Test / Evidence |
+|---|---|---|---|
+| **PS5.1-M01** | Intercept tool calls before reaching target API | `app/waf/proxy.py`, `app/api/v1/waf.py` | `test_stage3_waf.py` |
+| **PS5.1-M02** | Declarative Policy Definition (YAML/JSON) | `app/schemas/policy.py`, `app/services/policy_service.py` | `test_stage2_tools.py` |
+| **PS5.1-M03** | Rule 1: Rate Limiting per agent/tool | `app/policies/rate_limit.py` | `test_criterion_1_rate_limiting`, `test_concurrency.py` |
+| **PS5.1-M04** | Rule 2: Parameter & Injection Inspection | `app/policies/parameter_validation.py` | `test_criterion_2_parameter_injection_block` |
+| **PS5.1-M05** | Rule 3: Data Scope Enforcement | `app/policies/data_scope.py` | `test_criterion_3_out_of_scope_data_block` |
+| **PS5.1-M06** | Rule 4: Action Sequence Rules | `app/policies/sequence.py` | `test_criterion_4_sequence_rule_enforcement` |
+| **PS5.1-M07** | Real-Time Dashboard showing tool traffic | `frontend/src/App.tsx`, `frontend/src/components/*` | `test_stage8_websocket.py`, UI Build |
+| **PS5.1-M08** | Audit log capturing all decisions & redaction | `app/audit/service.py`, `app/audit/sanitizer.py` | `test_stage5_audit.py`, `test_audit_sanitizer.py` |
+| **BONUS** | Shadow Mode (Log without blocking) | `app/waf/engine.py`, `app/waf/proxy.py` | `test_stage6_shadow_mode.py` |
+| **GEN-01-07** | Production Readiness, Docker, CI/CD, Docs | `docker-compose.yml`, `.github/workflows/ci.yml` | Full suite, `run_benchmarks.py` |
+
+---
+
+## 6. Quickstart Guide
+
+### Option A: Docker Compose (One-Command Launch)
+Launch the complete 5-service architecture with a single command:
+
+```bash
+docker compose up --build
+```
+
+**Services Launched:**
+- **Frontend Dashboard**: `http://localhost:5173` (or `http://localhost:3000`)
+- **WAF Gateway API**: `http://localhost:8000` (Docs: `http://localhost:8000/docs`)
+- **Customer Microservice**: `http://localhost:8001`
+- **Email Microservice**: `http://localhost:8002`
+- **File Microservice**: `http://localhost:8003`
+- **PostgreSQL Database**: `localhost:5432`
+- **Redis Cache**: `localhost:6379`
+
+---
+
+### Option B: Local Development Setup
+
+#### 1. Start Infrastructure (PostgreSQL & Redis)
+```bash
+docker run -d --name agentshield-postgres -e POSTGRES_DB=agentshield -e POSTGRES_USER=agentshield -e POSTGRES_PASSWORD=agentshield_dev_password -p 5432:5432 postgres:16-alpine
+docker run -d --name agentshield-redis -p 6379:6379 redis:7-alpine
+```
+
+#### 2. Start Downstream Microservices
+```bash
+cd tools
+python run_all_tools.py
+# Customer (:8001), Email (:8002), File Storage (:8003)
+```
+
+#### 3. Start Backend WAF Gateway
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Or on Windows: .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Run migrations & seed data
+alembic upgrade head
+python ../scripts/seed_data.py
+
+# Launch FastAPI server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### 4. Start React Frontend Dashboard
+```bash
+cd frontend
+npm install
+npm run dev
+# Dashboard available at http://localhost:5173
+```
+
+---
+
+## 7. Interactive Threat & LLM Agent Simulator
+
+Open the **`Simulate / Test`** modal on the dashboard to test 6 tactical scenarios or execute prompts with real LLMs:
+
+1. **1. Normal Call (ALLOW)**: Authenticates Customer 101 &rarr; Reads profile &rarr; `HTTP 200 ALLOWED`
+2. **2. Rate Limit Burst**: Dispatches 6 rapid email requests &rarr; 6th request triggers rate violation &rarr; `HTTP 403 BLOCKED`
+3. **3. SQL Injection Attack**: Sends `UNION SELECT null, password` &rarr; Caught by parameter inspection &rarr; `HTTP 403 BLOCKED`
+4. **4. Data Boundary Bypass**: Requests Customer 999 (out of scope [101-103]) &rarr; `HTTP 403 BLOCKED`
+5. **5. Sequence Violation**: Calls `get_customer` without prior authentication &rarr; `HTTP 403 BLOCKED`
+6. **6. Shadow Calibration**: Executes out-of-scope call under `shadow-agent` &rarr; `HTTP 200 SHADOW_WOULD_BLOCK` (Dry-run logged)
+
+---
+
+## 8. Real-Time Dashboard & Telemetry
+
+The dashboard provides real-time security observability:
+- **Temporal Filter Controls**: Exact server-side aggregation for `Last 1 hour`, `Last 24 hours`, `Last 7 days`, and `All Time`.
+- **Live Traffic Stream**: WebSocket-driven push stream of all intercepted tool calls.
+- **Forensic Audit Log Trail**: Searchable audit logs with permanent PII redaction and CSV/JSON export.
+- **Policy Control Center**: 1-click mode switching between `Enforcement` and `Shadow`, and interactive **`+ Create New Policy`** modal.
+- **Tool Registry**: Port and scope visualizer for all registered microservices.
+
+---
+
+## 9. REST API & WebSocket Reference
 
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `POST` | `/api/v1/waf/intercept` | Intercept and evaluate agent tool call | `X-Agent-API-Key` |
-| `GET` | `/api/v1/metrics` | Real-time aggregate telemetry & rule stats | Public / Dashboard |
+| `POST` | `/api/v1/waf/prompt` | Execute natural language prompt through LLM reasoner + WAF | Public / Dashboard |
+| `GET` | `/api/v1/metrics` | Server-side temporal metrics (`?time_range=1h\|24h\|7d\|all`) | Public / Dashboard |
 | `GET` | `/api/v1/audit` | Paginated audit log events with filtering | Public / Dashboard |
 | `GET` | `/api/v1/policies` | List all registered security policies | Public / Dashboard |
+| `POST` | `/api/v1/policies` | Register new security policy | `X-API-Key` |
 | `PATCH`| `/api/v1/policies/{id}` | Update policy configuration / mode | `X-API-Key` |
 | `GET` | `/api/v1/tools` | List registered downstream tools | Public / Dashboard |
 | `GET` | `/api/v1/agents` | List registered AI agents | Public / Dashboard |
@@ -270,7 +334,7 @@ policy_config:
 
 ---
 
-## 9. Performance & Latency Benchmarks
+## 10. Performance & Latency Benchmarks
 
 Benchmarks executed over 100 sequential and concurrent iterations via `scripts/run_benchmarks.py`:
 
@@ -292,13 +356,13 @@ VERDICT: PASS — Policy evaluation latency is sub-5ms (Target: < 50ms).
 
 ---
 
-## 10. Automated Testing & Verification
+## 11. Automated Testing & Verification
 
 Run the full automated test suite containing unit, integration, concurrency, and fault-tolerance tests:
 
-```powershell
+```bash
 cd backend
-.\.venv\Scripts\pytest.exe -v --cov=app
+pytest -v --cov=app
 ```
 
 ```
