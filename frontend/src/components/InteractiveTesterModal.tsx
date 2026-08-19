@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Play, Zap, ShieldAlert, Database, Lock, Eye, Send, Sparkles, Loader2, Check, ShieldCheck, AlertOctagon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Play, Zap, ShieldAlert, Database, Lock, Eye, Send, Sparkles, Loader2, CheckCircle2, ShieldX } from 'lucide-react';
 import { triggerToolCall, executeAgentPrompt } from '../services/api';
 
 interface InteractiveTesterModalProps {
@@ -8,11 +8,11 @@ interface InteractiveTesterModalProps {
   onTriggered: () => void;
 }
 
-interface ScenarioResult {
-  decision: 'ALLOW' | 'BLOCK' | 'SHADOW_WOULD_BLOCK' | 'ERROR';
-  statusCode: number;
-  latencyMs?: number;
-  blockedByRule?: string;
+interface ToastInfo {
+  type: 'allow' | 'block' | 'shadow' | 'error';
+  title: string;
+  message: string;
+  latency?: string;
 }
 
 export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
@@ -23,7 +23,7 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
   const [runningId, setRunningId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'scenarios' | 'custom' | 'agent'>('scenarios');
   const [output, setOutput] = useState<any>(null);
-  const [scenarioResults, setScenarioResults] = useState<Record<string, ScenarioResult>>({});
+  const [toast, setToast] = useState<ToastInfo | null>(null);
 
   // Custom tool state
   const [tool, setTool] = useState('customer_database');
@@ -35,42 +35,62 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
   const [llmProvider, setLlmProvider] = useState<'auto' | 'groq' | 'openai' | 'ollama' | 'mock'>('auto');
   const [customApiKey, setCustomApiKey] = useState('');
 
+  // Auto-hide popup toast after 2.5 seconds
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => {
+      setToast(null);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   if (!isOpen) return null;
 
-  const recordResult = (id: string, res: any) => {
+  const showPopup = (scenarioName: string, res: any) => {
     const decision = res?.waf_evaluation?.decision || res?.status || 'ALLOW';
-    const blockedByRule = res?.waf_evaluation?.blocked_by_rule || undefined;
-    const latencyMs = res?.waf_evaluation?.execution_time_ms || 3.2;
-    const statusCode = decision === 'BLOCK' ? 403 : 200;
+    const latency = res?.waf_evaluation?.execution_time_ms
+      ? `${res.waf_evaluation.execution_time_ms.toFixed(1)}ms`
+      : '3.2ms';
+    const rule = res?.waf_evaluation?.blocked_by_rule;
 
-    setScenarioResults((prev) => ({
-      ...prev,
-      [id]: {
-        decision,
-        statusCode,
-        latencyMs,
-        blockedByRule,
-      },
-    }));
+    if (decision === 'BLOCK' || res?.error) {
+      setToast({
+        type: 'block',
+        title: `${scenarioName} Intercepted`,
+        message: `403 BLOCK ${rule ? `[${rule}]` : ''}`,
+        latency,
+      });
+    } else if (decision === 'SHADOW_WOULD_BLOCK') {
+      setToast({
+        type: 'shadow',
+        title: `${scenarioName} Observed`,
+        message: '200 SHADOW_WOULD_BLOCK (Dry-run logged)',
+        latency,
+      });
+    } else {
+      setToast({
+        type: 'allow',
+        title: `${scenarioName} Processed`,
+        message: '200 ALLOWED (Policy compliant)',
+        latency,
+      });
+    }
   };
 
-  const runScenario = async (id: string, action: () => Promise<any>) => {
+  const runScenario = async (id: string, name: string, action: () => Promise<any>) => {
     setRunningId(id);
     try {
       const res = await action();
       setOutput(res);
-      recordResult(id, res);
+      showPopup(name, res);
       onTriggered();
     } catch (e: any) {
       setOutput({ status: 'ERROR', detail: e.message });
-      setScenarioResults((prev) => ({
-        ...prev,
-        [id]: {
-          decision: 'ERROR',
-          statusCode: 500,
-          latencyMs: 0,
-        },
-      }));
+      setToast({
+        type: 'error',
+        title: `${name} Failed`,
+        message: e.message || 'Network error',
+      });
     } finally {
       setRunningId(null);
     }
@@ -83,10 +103,15 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
       const parsed = JSON.parse(paramsText);
       const res = await triggerToolCall('support-agent', 'agent-key-support-001', tool, operation, parsed, `test-${Date.now()}`);
       setOutput(res);
-      recordResult('custom', res);
+      showPopup(`Tool [${tool}]`, res);
       onTriggered();
     } catch (err: any) {
       setOutput({ error: err.message });
+      setToast({
+        type: 'error',
+        title: 'Custom Call Failed',
+        message: err.message,
+      });
     } finally {
       setRunningId(null);
     }
@@ -98,38 +123,18 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
     try {
       const res = await executeAgentPrompt(agentPrompt, llmProvider, customApiKey);
       setOutput(res);
-      recordResult('agent', res);
+      showPopup(`Agent [${res?.provider_used || llmProvider}]`, res);
       onTriggered();
     } catch (err: any) {
       setOutput({ error: err.message });
+      setToast({
+        type: 'error',
+        title: 'Agent Reasoning Error',
+        message: err.message,
+      });
     } finally {
       setRunningId(null);
     }
-  };
-
-  const renderScenarioTag = (id: string) => {
-    const result = scenarioResults[id];
-    if (!result) return null;
-
-    if (result.decision === 'BLOCK') {
-      return (
-        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--red-primary)', background: 'rgba(239,68,68,0.12)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-          <Check size={10} /> 403 BLOCKED ({result.latencyMs?.toFixed(1)}ms)
-        </span>
-      );
-    }
-    if (result.decision === 'SHADOW_WOULD_BLOCK') {
-      return (
-        <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--amber-primary)', background: 'rgba(245,158,11,0.12)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-          <Check size={10} /> SHADOW LOGGED ({result.latencyMs?.toFixed(1)}ms)
-        </span>
-      );
-    }
-    return (
-      <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--green-primary)', background: 'rgba(16,185,129,0.12)', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '3px' }}>
-        <Check size={10} /> 200 ALLOWED ({result.latencyMs?.toFixed(1)}ms)
-      </span>
-    );
   };
 
   return (
@@ -204,25 +209,23 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'norm' ? '1px solid var(--blue-primary)' : scenarioResults['norm'] ? '1px solid rgba(16, 185, 129, 0.4)' : undefined,
-                  background: runningId === 'norm' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'norm' ? '1px solid var(--green-primary)' : undefined,
+                  background: runningId === 'norm' ? 'rgba(16, 185, 129, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('norm', async () => {
+                  runScenario('norm', 'Normal Call', async () => {
                     const s = `norm-${Date.now()}`;
                     await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, s);
                     return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'get_customer', { customer_id: 101 }, s);
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--green-primary)' }}>
-                    {runningId === 'norm' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <Play size={13} />}
-                    <span>{runningId === 'norm' ? 'Executing Call...' : '1. Normal Call (ALLOW)'}</span>
-                  </div>
-                  {runningId !== 'norm' && renderScenarioTag('norm')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--green-primary)' }}>
+                  {runningId === 'norm' ? <Loader2 size={13} className="spin" /> : <Play size={13} />}
+                  <span>{runningId === 'norm' ? 'Executing Call...' : '1. Normal Call (ALLOW)'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Auth &rarr; Read Customer 101 profile</span>
               </button>
@@ -236,13 +239,14 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'rate' ? '1px solid var(--blue-primary)' : scenarioResults['rate'] ? '1px solid rgba(239, 68, 68, 0.4)' : undefined,
-                  background: runningId === 'rate' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'rate' ? '1px solid var(--red-primary)' : undefined,
+                  background: runningId === 'rate' ? 'rgba(239, 68, 68, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('rate', async () => {
+                  runScenario('rate', 'Rate Limit Burst', async () => {
                     const s = `burst-${Date.now()}`;
                     let r = null;
                     for (let i = 1; i <= 6; i++) {
@@ -252,12 +256,9 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
-                    {runningId === 'rate' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <Zap size={13} />}
-                    <span>{runningId === 'rate' ? 'Sending Burst (6 reqs)...' : '2. Rate Limit Burst (6 reqs)'}</span>
-                  </div>
-                  {runningId !== 'rate' && renderScenarioTag('rate')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
+                  {runningId === 'rate' ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
+                  <span>{runningId === 'rate' ? 'Sending Burst (6 reqs)...' : '2. Rate Limit Burst (6 reqs)'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Triggers 5 reqs/60s rate violation</span>
               </button>
@@ -271,25 +272,23 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'sqli' ? '1px solid var(--blue-primary)' : scenarioResults['sqli'] ? '1px solid rgba(239, 68, 68, 0.4)' : undefined,
-                  background: runningId === 'sqli' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'sqli' ? '1px solid var(--red-primary)' : undefined,
+                  background: runningId === 'sqli' ? 'rgba(239, 68, 68, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('sqli', async () => {
+                  runScenario('sqli', 'SQL Injection Attack', async () => {
                     const s = `sqli-${Date.now()}`;
                     await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, s);
                     return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'update_customer', { customer_id: 101, name: "Alice' UNION SELECT null, password" }, s);
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
-                    {runningId === 'sqli' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <ShieldAlert size={13} />}
-                    <span>{runningId === 'sqli' ? 'Injecting SQL Payload...' : '3. SQL Injection Attack'}</span>
-                  </div>
-                  {runningId !== 'sqli' && renderScenarioTag('sqli')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
+                  {runningId === 'sqli' ? <Loader2 size={13} className="spin" /> : <ShieldAlert size={13} />}
+                  <span>{runningId === 'sqli' ? 'Injecting SQL Payload...' : '3. SQL Injection Attack'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Detected forbidden UNION SELECT pattern</span>
               </button>
@@ -303,25 +302,23 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'scope' ? '1px solid var(--blue-primary)' : scenarioResults['scope'] ? '1px solid rgba(239, 68, 68, 0.4)' : undefined,
-                  background: runningId === 'scope' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'scope' ? '1px solid var(--red-primary)' : undefined,
+                  background: runningId === 'scope' ? 'rgba(239, 68, 68, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('scope', async () => {
+                  runScenario('scope', 'Data Boundary Bypass', async () => {
                     const s = `scope-${Date.now()}`;
                     await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'authenticate', { customer_id: 101 }, s);
                     return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'get_customer', { customer_id: 999 }, s);
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
-                    {runningId === 'scope' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <Database size={13} />}
-                    <span>{runningId === 'scope' ? 'Probing Scope [999]...' : '4. Data Boundary Bypass'}</span>
-                  </div>
-                  {runningId !== 'scope' && renderScenarioTag('scope')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
+                  {runningId === 'scope' ? <Loader2 size={13} className="spin" /> : <Database size={13} />}
+                  <span>{runningId === 'scope' ? 'Probing Scope [999]...' : '4. Data Boundary Bypass'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Customer 999 is out of scope [101-103]</span>
               </button>
@@ -335,24 +332,22 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'seq' ? '1px solid var(--blue-primary)' : scenarioResults['seq'] ? '1px solid rgba(239, 68, 68, 0.4)' : undefined,
-                  background: runningId === 'seq' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'seq' ? '1px solid var(--red-primary)' : undefined,
+                  background: runningId === 'seq' ? 'rgba(239, 68, 68, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('seq', async () => {
+                  runScenario('seq', 'Sequence Violation', async () => {
                     const s = `unauth-${Date.now()}`;
                     return await triggerToolCall('support-agent', 'agent-key-support-001', 'customer_database', 'get_customer', { customer_id: 101 }, s);
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
-                    {runningId === 'seq' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <Lock size={13} />}
-                    <span>{runningId === 'seq' ? 'Skipping Auth Sequence...' : '5. Sequence Violation'}</span>
-                  </div>
-                  {runningId !== 'seq' && renderScenarioTag('seq')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--red-primary)' }}>
+                  {runningId === 'seq' ? <Loader2 size={13} className="spin" /> : <Lock size={13} />}
+                  <span>{runningId === 'seq' ? 'Skipping Auth Sequence...' : '5. Sequence Violation'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Invoking get_customer without prior auth</span>
               </button>
@@ -366,25 +361,23 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
                   padding: '12px 14px',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '4px',
-                  border: runningId === 'shadow' ? '1px solid var(--blue-primary)' : scenarioResults['shadow'] ? '1px solid rgba(245, 158, 11, 0.4)' : undefined,
-                  background: runningId === 'shadow' ? 'rgba(59, 130, 246, 0.08)' : undefined,
+                  gap: '3px',
+                  border: runningId === 'shadow' ? '1px solid var(--amber-primary)' : undefined,
+                  background: runningId === 'shadow' ? 'rgba(245, 158, 11, 0.08)' : undefined,
+                  cursor: runningId !== null ? 'not-allowed' : 'pointer',
                   transition: 'all 0.15s ease',
                 }}
                 onClick={() =>
-                  runScenario('shadow', async () => {
+                  runScenario('shadow', 'Shadow Calibration', async () => {
                     const s = `shadow-${Date.now()}`;
                     await triggerToolCall('shadow-agent', 'agent-key-shadow-002', 'customer_database', 'authenticate', { customer_id: 101 }, s);
                     return await triggerToolCall('shadow-agent', 'agent-key-shadow-002', 'customer_database', 'get_customer', { customer_id: 103 }, s);
                   })
                 }
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--amber-primary)' }}>
-                    {runningId === 'shadow' ? <Loader2 size={13} className="spin" color="var(--blue-primary)" /> : <Eye size={13} />}
-                    <span>{runningId === 'shadow' ? 'Evaluating Shadow Policy...' : '6. Shadow Calibration'}</span>
-                  </div>
-                  {runningId !== 'shadow' && renderScenarioTag('shadow')}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, color: 'var(--amber-primary)' }}>
+                  {runningId === 'shadow' ? <Loader2 size={13} className="spin" /> : <Eye size={13} />}
+                  <span>{runningId === 'shadow' ? 'Evaluating Shadow Policy...' : '6. Shadow Calibration'}</span>
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>SHADOW_WOULD_BLOCK: Dry-run execution</span>
               </button>
@@ -518,6 +511,48 @@ export const InteractiveTesterModal: React.FC<InteractiveTesterModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Small floating auto-dismiss popup toast */}
+        {toast && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '16px',
+              right: '16px',
+              padding: '10px 14px',
+              borderRadius: '6px',
+              background: toast.type === 'allow' ? '#064E3B' : toast.type === 'shadow' ? '#78350F' : toast.type === 'block' ? '#7F1D1D' : '#1F2937',
+              border: `1px solid ${toast.type === 'allow' ? '#10B981' : toast.type === 'shadow' ? '#F59E0B' : toast.type === 'block' ? '#EF4444' : '#4B5563'}`,
+              color: '#FFFFFF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              zIndex: 1000,
+              fontSize: '12px',
+              animation: 'fadeIn 0.15s ease-out',
+            }}
+          >
+            {toast.type === 'allow' && <CheckCircle2 size={15} color="#34D399" />}
+            {toast.type === 'block' && <ShieldX size={15} color="#F87171" />}
+            {toast.type === 'shadow' && <Eye size={15} color="#FBBF24" />}
+            {toast.type === 'error' && <X size={15} color="#D1D5DB" />}
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+              <span style={{ fontWeight: 700 }}>{toast.title}</span>
+              <span style={{ fontSize: '11px', opacity: 0.9 }}>
+                {toast.message} {toast.latency ? `(${toast.latency})` : ''}
+              </span>
+            </div>
+
+            <button
+              onClick={() => setToast(null)}
+              style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', opacity: 0.7, padding: '2px', marginLeft: '6px' }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
