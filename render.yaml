@@ -19,6 +19,12 @@ services:
         value: "enforcement"
       - key: JWT_SECRET_KEY
         generateValue: true
+      - key: TOOL_CUSTOMER_URL
+        value: "http://agentshield-tools:8001"
+      - key: TOOL_EMAIL_URL
+        value: "http://agentshield-tools:8002"
+      - key: TOOL_FILE_URL
+        value: "http://agentshield-tools:8003"
       - key: POSTGRES_SERVER
         fromDatabase:
           name: agentshield-postgres
@@ -57,7 +63,7 @@ services:
       - key: PORT
         value: "8001"
 
-  # 3. Frontend SOC Dashboard (Static Site)
+  # 3. Frontend SOC Dashboard
   - type: web
     name: agentshield-frontend
     runtime: docker
@@ -66,17 +72,17 @@ services:
     plan: free
     region: oregon
 
+  # 4. Redis In-Memory Store
+  - type: redis
+    name: agentshield-redis
+    plan: free
+    region: oregon
+    ipAllowList: [] # Internal private networking only
+
 databases:
-  # 4. Managed PostgreSQL Database
+  # 5. Managed PostgreSQL Database
   - name: agentshield-postgres
     plan: free
     region: oregon
     databaseName: agentshield
     user: agentshield_user
-
-  # 5. Redis In-Memory Store
-  - name: agentshield-redis
-    type: redis
-    plan: free
-    region: oregon
-    ipAllowList: [] # internal only
