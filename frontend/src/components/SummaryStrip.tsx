@@ -3,17 +3,20 @@ import { MetricsData } from '../types';
 
 interface SummaryStripProps {
   metrics: MetricsData | null;
+  timeRange?: string;
 }
 
-export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
+export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics, timeRange = '24h' }) => {
   const total = metrics?.total_requests ?? 0;
   const allowed = metrics?.allowed_count ?? 0;
   const blocked = metrics?.blocked_count ?? 0;
   const shadow = metrics?.shadow_count ?? 0;
 
-  const allowPct = total > 0 ? ((allowed / total) * 100).toFixed(1) : '100.0';
-  const blockPct = total > 0 ? ((blocked / total) * 100).toFixed(1) : '0.0';
+  const allowPct = total > 0 ? ((allowed / total) * 100).toFixed(1) : (metrics?.allow_percentage?.toFixed(1) ?? '100.0');
+  const blockPct = total > 0 ? ((blocked / total) * 100).toFixed(1) : (metrics?.block_percentage?.toFixed(1) ?? '0.0');
   const shadowPct = total > 0 ? ((shadow / total) * 100).toFixed(1) : '0.0';
+
+  const timeLabel = timeRange === 'all' ? 'All Time' : timeRange;
 
   return (
     <div className="summary-strip">
@@ -21,7 +24,9 @@ export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
       <div className="summary-block">
         <span className="summary-label">
           <span>Total Requests</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px' }}>24h</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--blue-primary)', background: 'var(--blue-bg)', padding: '1px 5px', borderRadius: '3px' }}>
+            {timeLabel}
+          </span>
         </span>
         <div className="summary-value-row">
           <span className="summary-number">{total.toLocaleString()}</span>

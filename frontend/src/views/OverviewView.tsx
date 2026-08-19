@@ -10,11 +10,12 @@ interface OverviewViewProps {
   metrics: MetricsData | null;
   events: AuditEvent[];
   activePolicy: Policy | null;
-  onToggleMode: () => void;
+  onToggleMode: (policyId?: string) => void;
   selectedEvent: AuditEvent | null;
   onSelectEvent: (event: AuditEvent) => void;
   activeSessionFilter: string | null;
   onClearSessionFilter: () => void;
+  timeRange?: string;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
@@ -26,10 +27,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   onSelectEvent,
   activeSessionFilter,
   onClearSessionFilter,
+  timeRange,
 }) => {
   return (
     <>
-      <SummaryStrip metrics={metrics} />
+      <SummaryStrip metrics={metrics} timeRange={timeRange} />
 
       <div className="layout-2col">
         <ThreatActivityTable

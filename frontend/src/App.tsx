@@ -86,8 +86,9 @@ export const App: React.FC = () => {
     else if (timeRange === '7d') maxAgeMs = 7 * 24 * 60 * 60 * 1000;
 
     return rawEvents.filter((e) => {
+      if (timeRange === 'all') return true;
       const eventTime = new Date(e.created_at).getTime();
-      return now - eventTime <= maxAgeMs;
+      return !isNaN(eventTime) && now - eventTime <= maxAgeMs;
     });
   }, [rawEvents, timeRange]);
 
@@ -99,18 +100,18 @@ export const App: React.FC = () => {
     const shadow = filteredEvents.filter((e) => e.decision === 'SHADOW_WOULD_BLOCK').length;
     const total = filteredEvents.length;
 
-    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : rawMetrics.allow_percentage;
-    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : rawMetrics.block_percentage;
+    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : (rawMetrics?.allow_percentage ?? 100.0);
+    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : (rawMetrics?.block_percentage ?? 0.0);
 
     return {
       ...rawMetrics,
-      total_requests: total > 0 ? total : rawMetrics.total_requests,
+      total_requests: total,
       allowed_count: allowed,
       blocked_count: blocked,
       shadow_count: shadow,
       allow_percentage,
       block_percentage,
-      security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 82,
+      security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 100,
     };
   }, [rawMetrics, filteredEvents]);
 
@@ -180,6 +181,7 @@ export const App: React.FC = () => {
               onSelectEvent={(evt) => setSelectedEvent(evt)}
               activeSessionFilter={activeSessionFilter}
               onClearSessionFilter={() => setActiveSessionFilter(null)}
+              timeRange={timeRange}
             />
           )}
 
