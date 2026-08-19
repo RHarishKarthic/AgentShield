@@ -99,12 +99,17 @@ export const App: React.FC = () => {
     const shadow = filteredEvents.filter((e) => e.decision === 'SHADOW_WOULD_BLOCK').length;
     const total = filteredEvents.length;
 
+    const allow_percentage = total > 0 ? Number(((allowed / total) * 100).toFixed(1)) : rawMetrics.allow_percentage;
+    const block_percentage = total > 0 ? Number(((blocked / total) * 100).toFixed(1)) : rawMetrics.block_percentage;
+
     return {
       ...rawMetrics,
-      total_requests: total,
+      total_requests: total > 0 ? total : rawMetrics.total_requests,
       allowed_count: allowed,
       blocked_count: blocked,
       shadow_count: shadow,
+      allow_percentage,
+      block_percentage,
       security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 82,
     };
   }, [rawMetrics, filteredEvents]);

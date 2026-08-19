@@ -6,15 +6,18 @@ interface SummaryStripProps {
 }
 
 export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
-  const total = metrics?.total_requests ?? 1231;
-  const allowed = metrics?.allowed_count ?? 680;
-  const blocked = metrics?.blocked_count ?? 473;
-  const shadow = metrics?.shadow_count ?? 78;
-  const blockRate = metrics?.block_percentage ?? 38.4;
+  const total = metrics?.total_requests ?? 0;
+  const allowed = metrics?.allowed_count ?? 0;
+  const blocked = metrics?.blocked_count ?? 0;
+  const shadow = metrics?.shadow_count ?? 0;
+
+  const allowPct = total > 0 ? ((allowed / total) * 100).toFixed(1) : '100.0';
+  const blockPct = total > 0 ? ((blocked / total) * 100).toFixed(1) : '0.0';
+  const shadowPct = total > 0 ? ((shadow / total) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="summary-strip">
-      {/* 1. Requests */}
+      {/* 1. Total Requests */}
       <div className="summary-block">
         <span className="summary-label">
           <span>Total Requests</span>
@@ -33,28 +36,28 @@ export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
             />
           </svg>
         </div>
-        <span className="summary-subtext">{metrics?.requests_per_minute || 42} req/min avg throughput</span>
+        <span className="summary-subtext">{metrics?.requests_per_minute || 2} req/min avg throughput</span>
       </div>
 
-      {/* 2. Allowed */}
+      {/* 2. Allowed Traffic */}
       <div className="summary-block">
         <span className="summary-label">Allowed Traffic</span>
         <div className="summary-value-row">
           <span className="summary-number allowed">{allowed.toLocaleString()}</span>
           <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--green-primary)', fontFamily: 'var(--font-mono)' }}>
-            {metrics?.allow_percentage ?? 55.2}%
+            {allowPct}%
           </span>
         </div>
         <span className="summary-subtext">Policy compliant executions</span>
       </div>
 
-      {/* 3. Blocked */}
+      {/* 3. Blocked Invocations */}
       <div className="summary-block">
         <span className="summary-label">Blocked Invocations</span>
         <div className="summary-value-row">
           <span className="summary-number blocked">{blocked.toLocaleString()}</span>
           <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--red-primary)', fontFamily: 'var(--font-mono)' }}>
-            {metrics?.block_percentage ?? 38.4}%
+            {blockPct}%
           </span>
         </div>
         <span className="summary-subtext">Active security blocks</span>
@@ -66,17 +69,17 @@ export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
         <div className="summary-value-row">
           <span className="summary-number shadow">{shadow.toLocaleString()}</span>
           <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--amber-primary)', fontFamily: 'var(--font-mono)' }}>
-            {metrics ? (100 - metrics.allow_percentage - metrics.block_percentage).toFixed(1) : 6.4}%
+            {shadowPct}%
           </span>
         </div>
         <span className="summary-subtext">Observed dry-run events</span>
       </div>
 
-      {/* 5. Block Rate */}
+      {/* 5. Threat Block Rate */}
       <div className="summary-block">
         <span className="summary-label">Threat Block Rate</span>
         <div className="summary-value-row">
-          <span className="summary-number">{blockRate}%</span>
+          <span className="summary-number">{blockPct}%</span>
           {/* Mini Sparkline */}
           <svg width="48" height="18" viewBox="0 0 48 18" fill="none">
             <path
@@ -88,7 +91,7 @@ export const SummaryStrip: React.FC<SummaryStripProps> = ({ metrics }) => {
             />
           </svg>
         </div>
-        <span className="summary-subtext">-1.8% vs previous window</span>
+        <span className="summary-subtext">Threat mitigation percentage</span>
       </div>
     </div>
   );
