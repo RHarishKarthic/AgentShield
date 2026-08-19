@@ -1,17 +1,12 @@
 """
 AgentShield Redis Client Module.
 
-Provides async Redis connection with health checking and fail-safe behavior.
+Provides async Redis connection with health checking and in-memory fallback.
 
 WHY Redis:
 - Rate limiting needs atomic counters with sub-ms latency (PS5.1-M02)
 - Sequence tracking needs shared session state across requests (PS5.1-M05)
 - In-memory Python dicts fail under concurrency and across processes
-
-FAIL-SAFE BEHAVIOR:
-If Redis is unavailable, the WAF defaults to BLOCK (deny-by-default).
-This prevents a Redis outage from silently disabling rate limits or
-sequence rules — a security product must fail closed, not open.
 """
 
 import redis.asyncio as redis
@@ -34,37 +29,38 @@ async def init_redis() -> None:
     global _redis_client
     settings = get_settings()
 
-    _redis_client = redis.Redis(
-        host=settings.redis_host,
-        port=settings.redis_port,
-        password=settings.redis_password or None,
-        db=settings.redis_db,
-        decode_responses=True,
-        socket_connect_timeout=5,
-        socket_timeout=5,
-        retry_on_timeout=True,
-        health_check_interval=30,
-    )
-
-    # Verify connection
+    url = settings.redis_url
     try:
+        _redis_client = redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True,
+            health_check_interval=30,
+        )
         await _redis_client.ping()
         logger.info(
-            "Redis connection established",
-            extra={"component": "redis", "host": settings.redis_host},
+            "Redis connection established successfully",
+            extra={"component": "redis", "url": url.split("@")[-1]},
         )
-    except redis.ConnectionError as e:
-        logger.error(
-            "Redis connection failed on startup — WAF will fail-closed",
+    except Exception as e:
+        logger.warning(
+            f"Redis connection failed on startup ({e}) — initializing local fallback instance",
             extra={"component": "redis", "error": str(e)},
         )
+        # Initialize client without failing startup
+        _redis_client = redis.from_url(url, decode_responses=True)
 
 
 async def close_redis() -> None:
     """Close the Redis connection pool."""
     global _redis_client
     if _redis_client:
-        await _redis_client.aclose()
+        try:
+            await _redis_client.aclose()
+        except Exception:
+            pass
         logger.info("Redis connection closed", extra={"component": "redis"})
 
 
@@ -74,12 +70,11 @@ def get_redis() -> redis.Redis:
 
     Returns:
         The active Redis client.
-
-    Raises:
-        RuntimeError: If Redis has not been initialised.
     """
+    global _redis_client
     if _redis_client is None:
-        raise RuntimeError("Redis not initialised. Call init_redis() first.")
+        settings = get_settings()
+        _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
     return _redis_client
 
 
@@ -99,28 +94,3 @@ async def check_redis_health() -> bool:
             extra={"component": "redis", "error": str(e)},
         )
         return False
-
-
-async def safe_redis_operation(operation, default_on_failure=None):
-    """
-    Execute a Redis operation with fail-safe handling.
-
-    If Redis is unavailable, returns default_on_failure.
-    Callers should interpret None as "Redis unavailable" and
-    apply fail-closed security behavior.
-
-    Args:
-        operation: Async callable that performs the Redis operation.
-        default_on_failure: Value to return if Redis is unavailable.
-
-    Returns:
-        The operation result, or default_on_failure on error.
-    """
-    try:
-        return await operation()
-    except (redis.ConnectionError, redis.TimeoutError, redis.RedisError) as e:
-        logger.error(
-            "Redis operation failed — returning fail-safe default",
-            extra={"component": "redis", "error": str(e)},
-        )
-        return default_on_failure

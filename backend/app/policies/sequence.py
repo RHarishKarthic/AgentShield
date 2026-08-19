@@ -1,11 +1,12 @@
 """
 Sequence Policy Rule.
 
-Implements session-aware multi-step sequence validation backed by Redis.
+Implements session-aware multi-step sequence validation backed by Redis with in-memory fallback.
 Rejects out-of-order tool actions (e.g. attempting to read or update customer data
 without prior customer authentication).
 """
 
+from collections import defaultdict
 from typing import Any
 
 import redis.asyncio as redis
@@ -18,6 +19,9 @@ from app.policies.base import BaseRule
 from app.schemas.waf import ToolCallRequest
 
 logger = get_logger(__name__)
+
+# In-memory session history fallback
+_IN_MEMORY_SESSIONS: dict[str, list[str]] = defaultdict(list)
 
 
 class SequenceRule(BaseRule):
@@ -84,60 +88,56 @@ class SequenceRule(BaseRule):
 
         if not matching_rule:
             # Action has no prerequisites, but record it in session history
-            if redis_client is not None:
-                await self._record_action(redis_client, session_id, current_action)
+            await self._record_action(redis_client, session_id, current_action)
             return True, None
 
         prerequisites: list[str] = matching_rule.get("requires", [])
         if not prerequisites:
-            if redis_client is not None:
-                await self._record_action(redis_client, session_id, current_action)
-            return True, None
-
-        if redis_client is None:
-            logger.error("Sequence evaluation failed: Redis unavailable (fail-closed)")
-            return (
-                False,
-                "Session sequence state unavailable — request blocked by fail-closed policy",
-            )
-
-        # Check session action history from Redis
-        redis_key = f"session:sequence:{session_id}"
-        try:
-            history = await redis_client.lrange(redis_key, 0, -1)
-            history_set = set(history)
-
-            missing_prereqs = [req for req in prerequisites if req not in history_set]
-
-            if missing_prereqs:
-                msg = (
-                    f"Sequence rule violation: Action '{current_action}' (or '{request.operation or request.tool}') "
-                    f"requires prerequisite action(s) {missing_prereqs} to be executed first in session '{session_id}'"
-                )
-                logger.warning(
-                    msg,
-                    extra={
-                        "agent_id": agent.agent_id,
-                        "session_id": session_id,
-                        "action": current_action,
-                        "missing": missing_prereqs,
-                    },
-                )
-                return False, msg
-
-            # All prerequisites satisfied — record current action in session history
             await self._record_action(redis_client, session_id, current_action)
             return True, None
 
-        except redis.RedisError as e:
-            logger.error(f"Redis sequence evaluation error: {e!s}", extra={"error": str(e)})
-            return False, f"Sequence evaluation error: {e!s}"
+        # Check session action history from Redis or in-memory fallback
+        history_set: set[str] = set()
+        if redis_client is not None:
+            try:
+                redis_key = f"session:sequence:{session_id}"
+                history = await redis_client.lrange(redis_key, 0, -1)
+                history_set = set(history)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Redis sequence history fallback to in-memory: {e!s}")
+                history_set = set(_IN_MEMORY_SESSIONS[session_id])
+        else:
+            history_set = set(_IN_MEMORY_SESSIONS[session_id])
 
-    async def _record_action(self, redis_client: redis.Redis, session_id: str, action: str) -> None:
-        """Record completed action into Redis session history with 1-hour TTL."""
-        try:
-            redis_key = f"session:sequence:{session_id}"
-            await redis_client.rpush(redis_key, action)
-            await redis_client.expire(redis_key, 3600)
-        except Exception as e:
-            logger.error(f"Failed to record action in Redis sequence: {e!s}")
+        missing_prereqs = [req for req in prerequisites if req not in history_set]
+
+        if missing_prereqs:
+            msg = (
+                f"Sequence rule violation: Action '{current_action}' (or '{request.operation or request.tool}') "
+                f"requires prerequisite action(s) {missing_prereqs} to be executed first in session '{session_id}'"
+            )
+            logger.warning(
+                msg,
+                extra={
+                    "agent_id": agent.agent_id,
+                    "session_id": session_id,
+                    "action": current_action,
+                    "missing": missing_prereqs,
+                },
+            )
+            return False, msg
+
+        # All prerequisites satisfied — record current action in session history
+        await self._record_action(redis_client, session_id, current_action)
+        return True, None
+
+    async def _record_action(self, redis_client: redis.Redis | None, session_id: str, action: str) -> None:
+        """Record completed action into Redis session history with in-memory mirror."""
+        _IN_MEMORY_SESSIONS[session_id].append(action)
+        if redis_client is not None:
+            try:
+                redis_key = f"session:sequence:{session_id}"
+                await redis_client.rpush(redis_key, action)
+                await redis_client.expire(redis_key, 3600)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Failed to record action in Redis sequence: {e!s}")
