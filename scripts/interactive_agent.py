@@ -9,6 +9,7 @@ import asyncio
 import os
 import sys
 import uuid
+
 import httpx
 
 # Add project paths
@@ -37,6 +38,21 @@ def print_banner():
     print("=" * 70 + "\n")
 
 
+async def check_gateway_health():
+    """Verify AgentShield WAF gateway is reachable."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            h = await client.get("http://localhost:8000/health")
+            if h.status_code != 200:
+                print(f"[!] Warning: Gateway at http://localhost:8000 returned status {h.status_code}")
+    except Exception as e:  # noqa: BLE001
+        print("[!] ERROR: Cannot reach AgentShield WAF Gateway at http://localhost:8000.")
+        print("    Please ensure Docker or the backend server is running.")
+        print(f"    Details: {e}")
+        return False
+    return True
+
+
 async def main():
     print_banner()
 
@@ -44,16 +60,7 @@ async def main():
     agent_id = "support-agent"
     api_key = "agent-key-support-001"
 
-    # Test gateway connectivity
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as test_client:
-            h = await test_client.get("http://localhost:8000/health")
-            if h.status_code != 200:
-                print(f"[!] Warning: Gateway at http://localhost:8000 returned status {h.status_code}")
-    except Exception as e:
-        print("[!] ERROR: Cannot reach AgentShield WAF Gateway at http://localhost:8000.")
-        print("    Please ensure Docker or the backend server is running.")
-        print(f"    Details: {e}")
+    if not await check_gateway_health():
         return
 
     session_id = f"sess-{uuid.uuid4().hex[:6]}"

@@ -6,7 +6,7 @@ and test prompt-to-tool-call autonomous ReAct loops.
 """
 
 import uuid
-from typing import Any
+
 import redis.asyncio as redis
 from fastapi import APIRouter, Depends, Header, Request, status
 from fastapi.responses import JSONResponse
@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_request_id
 from app.redis_client import get_redis
 from app.schemas.waf import ToolCallRequest, ToolCallResponse
+from app.waf.llm import AVAILABLE_TOOLS, get_llm_provider
 from app.waf.proxy import WAFProxy
-from app.waf.llm import get_llm_provider, AVAILABLE_TOOLS
 
 router = APIRouter(prefix="/waf", tags=["WAF Gateway"])
 

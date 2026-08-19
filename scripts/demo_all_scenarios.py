@@ -45,7 +45,7 @@ async def run_demo():
             health = await client.get(f"{WAF_BASE}/health")
             if health.status_code != 200:
                 print(f"[!] Warning: Gateway health check returned {health.status_code}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"[!] ERROR: Cannot reach AgentShield gateway at {WAF_BASE}. Make sure the backend is running.")
             print(f"    Exception: {e}")
             return
@@ -56,7 +56,7 @@ async def run_demo():
             r_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
             await r_client.flushdb()
             await r_client.aclose()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
         # ---------------------------------------------------------------------
@@ -105,6 +105,7 @@ async def run_demo():
                 "tool": "email_service",
                 "operation": "send",
                 "parameters": {"recipient": "user1@example.com", "subject": "S1", "body": "B1"},
+                "session_id": sess_2,
             },
             headers={"X-Agent-API-Key": "agent-key-support-001"},
         )
@@ -256,10 +257,11 @@ async def run_demo():
         seq_agent = "support-agent"
         # Reset ratelimit for customer_database so sequence can complete
         try:
+            import redis.asyncio as aioredis
             r_client = aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
             await r_client.delete(f"ratelimit:{seq_agent}:customer_database")
             await r_client.aclose()
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
 
         # Step 1: Authenticate

@@ -113,10 +113,10 @@ class GroqProvider(BaseLLMProvider):
                         "thought": f"Groq API error: HTTP {res.status_code}",
                         "final_answer": f"Groq error: {res.text}",
                     }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {
-                "thought": f"Groq connection exception: {str(e)}",
-                "final_answer": f"Groq connection error: {str(e)}",
+                "thought": f"Groq connection exception: {e!s}",
+                "final_answer": f"Groq connection error: {e!s}",
             }
 
 
@@ -168,10 +168,10 @@ class OllamaProvider(BaseLLMProvider):
                         "thought": f"Ollama error: HTTP {res.status_code}",
                         "final_answer": f"Ollama error: {res.text}",
                     }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {
-                "thought": f"Ollama connection exception: {str(e)}",
-                "final_answer": f"Ollama offline: {str(e)}",
+                "thought": f"Ollama connection exception: {e!s}",
+                "final_answer": f"Ollama offline: {e!s}",
             }
 
 
@@ -229,10 +229,10 @@ class OpenAIProvider(BaseLLMProvider):
                         "thought": f"OpenAI error: HTTP {res.status_code}",
                         "final_answer": f"OpenAI error: {res.text}",
                     }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {
-                "thought": f"OpenAI connection exception: {str(e)}",
-                "final_answer": f"OpenAI connection error: {str(e)}",
+                "thought": f"OpenAI connection exception: {e!s}",
+                "final_answer": f"OpenAI connection error: {e!s}",
             }
 
 

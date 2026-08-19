@@ -94,9 +94,8 @@ class WAFGatewayClient:
 
             try:
                 return resp.json()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 return {
                     "status": "BLOCK" if resp.status_code >= 400 else "ALLOW",
-                    "error": f"HTTP {resp.status_code}: {resp.text}",
-                    "result": None,
+                    "error": resp.text,
                 }

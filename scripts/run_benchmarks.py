@@ -8,7 +8,6 @@ import asyncio
 import os
 import statistics
 import sys
-import time
 
 import httpx
 
@@ -20,6 +19,7 @@ sys.path.insert(0, root_dir)
 from app.database import close_db, init_db
 from app.main import app
 from app.redis_client import close_redis, get_redis, init_redis
+
 from tools.customer_service.main import app as customer_app
 
 
@@ -54,7 +54,6 @@ async def benchmark():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         for i in range(100):
             await redis_client.delete("ratelimit:support-agent:customer_database")
-            t0 = time.perf_counter()
             res = await client.post(
                 "/api/v1/waf/intercept",
                 json={
@@ -66,7 +65,6 @@ async def benchmark():
                 },
                 headers={"X-Agent-API-Key": "agent-key-support-001"},
             )
-            total_elapsed = (time.perf_counter() - t0) * 1000
             if res.status_code == 200:
                 eval_time = res.json()["waf_evaluation"]["execution_time_ms"]
                 latencies.append(eval_time)
