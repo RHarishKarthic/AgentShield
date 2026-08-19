@@ -9,6 +9,10 @@ interface HeaderProps {
   isRefreshing: boolean;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  environment: string;
+  onEnvironmentChange: (env: string) => void;
+  timeRange: string;
+  onTimeRangeChange: (range: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,6 +22,10 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   theme,
   onToggleTheme,
+  environment,
+  onEnvironmentChange,
+  timeRange,
+  onTimeRangeChange,
 }) => {
   return (
     <header className="top-header">
@@ -28,14 +36,22 @@ export const Header: React.FC<HeaderProps> = ({
 
       <div className="header-right">
         {/* Environment Selector */}
-        <select className="select-control" defaultValue="Production">
+        <select
+          className="select-control"
+          value={environment}
+          onChange={(e) => onEnvironmentChange(e.target.value)}
+        >
           <option value="Production">Env: Production (us-east-1)</option>
           <option value="Staging">Env: Staging (us-east-2)</option>
           <option value="Development">Env: Dev Cluster (local)</option>
         </select>
 
-        {/* Time Range */}
-        <select className="select-control" defaultValue="24h">
+        {/* Time Range Selector */}
+        <select
+          className="select-control"
+          value={timeRange}
+          onChange={(e) => onTimeRangeChange(e.target.value)}
+        >
           <option value="1h">Last 1 hour</option>
           <option value="24h">Last 24 hours</option>
           <option value="7d">Last 7 days</option>

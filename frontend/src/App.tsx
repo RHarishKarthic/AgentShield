@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './views/OverviewView';
@@ -20,11 +20,13 @@ import { AuditEvent, MetricsData, Policy } from './types';
 
 export const App: React.FC = () => {
   const [activeNavTab, setActiveNavTab] = useState<string>('overview');
+  const [environment, setEnvironment] = useState<string>('Production');
+  const [timeRange, setTimeRange] = useState<string>('24h');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     return (localStorage.getItem('agentshield-theme') as 'light' | 'dark') || 'light';
   });
-  const [metrics, setMetrics] = useState<MetricsData | null>(null);
-  const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [rawMetrics, setRawMetrics] = useState<MetricsData | null>(null);
+  const [rawEvents, setRawEvents] = useState<AuditEvent[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<AuditEvent | null>(null);
   const [activeSessionFilter, setActiveSessionFilter] = useState<string | null>(null);
@@ -48,11 +50,11 @@ export const App: React.FC = () => {
       setIsRefreshing(true);
       const [m, a, p] = await Promise.all([
         fetchMetrics(),
-        fetchAuditLogs(60),
+        fetchAuditLogs(100),
         fetchPolicies(),
       ]);
-      setMetrics(m);
-      setEvents(a.items);
+      setRawMetrics(m);
+      setRawEvents(a.items);
       setPolicies(p);
     } catch (err) {
       console.error('Error loading AgentShield telemetry:', err);
@@ -69,11 +71,43 @@ export const App: React.FC = () => {
 
   // Live WebSocket Event Handler
   const handleLiveEvent = useCallback((event: AuditEvent) => {
-    setEvents((prev) => [event, ...prev.slice(0, 59)]);
+    setRawEvents((prev) => [event, ...prev.slice(0, 99)]);
     loadData();
   }, [loadData]);
 
   const { status: wsStatus } = useWebSocket(handleLiveEvent);
+
+  // Filter events based on Time Range
+  const filteredEvents = useMemo(() => {
+    const now = Date.now();
+    let maxAgeMs = Infinity;
+    if (timeRange === '1h') maxAgeMs = 60 * 60 * 1000;
+    else if (timeRange === '24h') maxAgeMs = 24 * 60 * 60 * 1000;
+    else if (timeRange === '7d') maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+
+    return rawEvents.filter((e) => {
+      const eventTime = new Date(e.created_at).getTime();
+      return now - eventTime <= maxAgeMs;
+    });
+  }, [rawEvents, timeRange]);
+
+  // Dynamically compute metrics based on filtered time range
+  const metrics = useMemo<MetricsData | null>(() => {
+    if (!rawMetrics) return null;
+    const allowed = filteredEvents.filter((e) => e.decision === 'ALLOW').length;
+    const blocked = filteredEvents.filter((e) => e.decision === 'BLOCK').length;
+    const shadow = filteredEvents.filter((e) => e.decision === 'SHADOW_WOULD_BLOCK').length;
+    const total = filteredEvents.length;
+
+    return {
+      ...rawMetrics,
+      total_requests: total,
+      allowed_count: allowed,
+      blocked_count: blocked,
+      shadow_count: shadow,
+      security_score: total > 0 ? Math.round(((allowed + shadow * 0.5) / total) * 100) : 82,
+    };
+  }, [rawMetrics, filteredEvents]);
 
   const activePolicy = policies.find((p) => p.policy_id === 'support-agent-policy') || policies[0] || null;
 
@@ -88,11 +122,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const threatCount = metrics?.blocked_count || events.filter((e) => e.decision === 'BLOCK').length;
+  const threatCount = metrics?.blocked_count || filteredEvents.filter((e) => e.decision === 'BLOCK').length;
 
   return (
     <div className="app-shell">
-      {/* 1. Persistent 240px Left Navigation Rail (Dark Theme) */}
+      {/* 1. Persistent 240px Left Navigation Rail */}
       <Sidebar
         activeTab={activeNavTab}
         onSelectTab={(tab) => {
@@ -114,6 +148,10 @@ export const App: React.FC = () => {
           isRefreshing={isRefreshing}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          environment={environment}
+          onEnvironmentChange={setEnvironment}
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
         />
 
         {/* Dashboard Body - Dynamic View Routing based on Left Sidebar Tab */}
@@ -121,7 +159,7 @@ export const App: React.FC = () => {
           {activeNavTab === 'overview' && (
             <OverviewView
               metrics={metrics}
-              events={events}
+              events={filteredEvents}
               activePolicy={activePolicy}
               onToggleMode={handleToggleMode}
               selectedEvent={selectedEvent}
@@ -133,7 +171,7 @@ export const App: React.FC = () => {
 
           {activeNavTab === 'traffic' && (
             <LiveTrafficView
-              events={events}
+              events={filteredEvents}
               onSelectEvent={(evt) => setSelectedEvent(evt)}
               selectedEventId={selectedEvent?.event_id || null}
               onRefresh={loadData}
@@ -142,7 +180,7 @@ export const App: React.FC = () => {
 
           {activeNavTab === 'threats' && (
             <ThreatDetectionView
-              events={events}
+              events={filteredEvents}
               onSelectEvent={(evt) => setSelectedEvent(evt)}
               selectedEventId={selectedEvent?.event_id || null}
             />
@@ -165,7 +203,7 @@ export const App: React.FC = () => {
 
           {activeNavTab === 'audit' && (
             <AuditLogView
-              events={events}
+              events={filteredEvents}
               onSelectEvent={(evt) => setSelectedEvent(evt)}
               selectedEventId={selectedEvent?.event_id || null}
             />
@@ -173,7 +211,7 @@ export const App: React.FC = () => {
 
           {activeNavTab === 'shadow' && (
             <ShadowModeView
-              events={events}
+              events={filteredEvents}
               activePolicy={activePolicy}
               onToggleMode={handleToggleMode}
               onSelectEvent={(evt) => setSelectedEvent(evt)}
