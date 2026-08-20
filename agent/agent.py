@@ -123,36 +123,42 @@ class AutonomousAgent:
                     "final_answer": f"Action blocked by AgentShield WAF: {block_reason}",
                 }
 
-            # Step 4: Feed tool result back into history for the next reasoning step
+            # Step 4: Tool Succeeded (ALLOW or SHADOW_WOULD_BLOCK)
             warning = None
             if disposition == "SHADOW_WOULD_BLOCK":
-                warning = "[SHADOW MODE] Policy violation recorded in audit log, but action was allowed."
+                warning = "[SHADOW MODE] Policy violation was recorded in audit log, but action was allowed."
 
-            result_summary = str(tool_result) if tool_result else "No result returned."
-            conversation_history.append({"role": "user", "content": instruction})
-            conversation_history.append({
-                "role": "assistant",
-                "content": (
-                    f"I called {tool_name}/{operation} and received: {result_summary}."
-                    + (f" Note: {warning}" if warning else "")
-                ),
-            })
+            # Synthesize final natural language summary
+            final_answer = f"Successfully executed {tool_name}/{operation}. Result: {tool_result}"
+            if warning:
+                final_answer += f" ({warning})"
 
+            return {
+                "instruction": instruction,
+                "session_id": sess_id,
+                "steps": steps,
+                "total_steps": step_num,
+                "thought": thought,
+                "tool_call": {
+                    "tool": tool_name,
+                    "operation": operation,
+                    "parameters": parameters,
+                },
+                "waf_disposition": disposition,
+                "waf_evaluation": waf_response.get("waf_evaluation"),
+                "tool_result": tool_result,
+                "warning": warning,
+                "final_answer": final_answer,
+            }
 
-        # MAX_STEPS exhausted — return the last step's result
-        last = steps[-1] if steps else {}
+        # Fallback return if no steps executed
         return {
             "instruction": instruction,
             "session_id": sess_id,
-            "steps": steps,
-            "total_steps": MAX_STEPS,
-            "thought": last.get("thought", ""),
-            "tool_call": last.get("tool_call"),
-            "waf_disposition": last.get("waf_disposition", "UNKNOWN"),
-            "waf_evaluation": last.get("waf_evaluation"),
-            "tool_result": last.get("tool_result"),
-            "final_answer": (
-                f"Reached maximum reasoning steps ({MAX_STEPS}). "
-                f"Last result: {last.get('tool_result')}"
-            ),
+            "steps": [],
+            "total_steps": 0,
+            "thought": "",
+            "tool_call": None,
+            "waf_disposition": "NO_STEPS",
+            "final_answer": "No actions performed.",
         }
