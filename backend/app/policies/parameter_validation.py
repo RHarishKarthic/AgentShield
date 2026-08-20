@@ -118,8 +118,12 @@ class ParameterValidationRule(BaseRule):
                 msg = f"Total parameters payload size ({payload_bytes} bytes) exceeds limit of {max_total_size} bytes"
                 logger.warning(msg, extra={"agent_id": agent.agent_id, "size": payload_bytes})
                 return False, msg
-        except Exception:
-            pass
+        except (TypeError, ValueError) as e:
+            # Fail-closed: if parameters cannot be serialized, block the request.
+            # This prevents non-serializable payloads from bypassing the size check.
+            msg = f"Parameter payload is not JSON-serializable — request blocked: {type(e).__name__}"
+            logger.warning(msg, extra={"agent_id": agent.agent_id, "error": str(e)})
+            return False, msg
 
         # 2. Individual parameter size check
         ok, err = self._check_max_parameter_size(params, max_param_size)

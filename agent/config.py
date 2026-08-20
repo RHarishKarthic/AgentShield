@@ -30,9 +30,9 @@ class AgentConfig(BaseSettings):
     )
 
     # --- LLM Provider ---
-    llm_provider: Literal["ollama", "openai", "anthropic", "mock"] = Field(
+    llm_provider: Literal["ollama", "openai", "groq", "mock"] = Field(
         default="ollama",
-        description="Active LLM provider: 'ollama', 'openai', 'anthropic', or 'mock'",
+        description="Active LLM provider: 'ollama', 'openai', 'groq', or 'mock'. Note: 'anthropic' is not yet implemented.",
     )
 
     # Ollama settings (Local development)

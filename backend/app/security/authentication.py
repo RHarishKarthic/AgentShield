@@ -13,9 +13,16 @@ HOW it fits:
 - Every WAF intercept request must include X-API-Key header
 - The key is verified against the Agent model's api_key_hash
 - If authentication fails, the request is rejected before policy evaluation
+
+SECURITY NOTES:
+- verify_api_key() uses hmac.compare_digest() for constant-time comparison
+  to prevent timing side-channel attacks.
+- require_waf_api_key() validates against ONLY the configured WAF_API_KEY.
+  No hardcoded fallback keys are permitted in any environment.
 """
 
 import hashlib
+import hmac
 import secrets
 
 from fastapi import HTTPException, Security, status
@@ -46,8 +53,14 @@ def generate_api_key() -> str:
 
 
 def verify_api_key(provided_key: str, stored_hash: str) -> bool:
-    """Verify a provided API key against its stored hash."""
-    return hash_api_key(provided_key) == stored_hash
+    """
+    Verify a provided API key against its stored hash.
+
+    Uses hmac.compare_digest() for constant-time comparison to prevent
+    timing side-channel attacks where an attacker could infer the correct
+    key by measuring response latency.
+    """
+    return hmac.compare_digest(hash_api_key(provided_key), stored_hash)
 
 
 async def require_waf_api_key(
@@ -71,9 +84,10 @@ async def require_waf_api_key(
             detail="Missing API key. Provide X-API-Key header.",
         )
 
-    valid_keys = {settings.waf_api_key, "dev-api-key-agentshield-2026", "change-me-to-a-strong-api-key"}
-    if api_key not in valid_keys:
-        logger.warning("Invalid API key attempt")
+    # Constant-time comparison against the single configured WAF API key.
+    # No hardcoded fallback keys — all environments must set WAF_API_KEY.
+    if not hmac.compare_digest(api_key, settings.waf_api_key):
+        logger.warning("Invalid API key attempt", extra={"masked_key": api_key[:4] + "****"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key.",

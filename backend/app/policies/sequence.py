@@ -6,6 +6,7 @@ Rejects out-of-order tool actions (e.g. attempting to read or update customer da
 without prior customer authentication).
 """
 
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -20,8 +21,27 @@ from app.schemas.waf import ToolCallRequest
 
 logger = get_logger(__name__)
 
-# In-memory session history fallback for offline/disconnected environments
-_IN_MEMORY_SESSIONS: dict[str, list[str]] = defaultdict(list)
+# --- In-memory session fallback (Redis offline/disconnected environments) ---
+# Bounded by MAX_SESSIONS entries; entries expire after SESSION_TTL_SECONDS.
+# This prevents unbounded memory growth in long-running processes.
+SESSION_TTL_SECONDS: int = 3600   # 1 hour — matches Redis key TTL
+MAX_SESSIONS: int = 10_000        # Hard cap on in-memory session count
+
+# Structure: { session_id: {"actions": [...], "expires_at": float} }
+_IN_MEMORY_SESSIONS: dict[str, dict] = {}
+
+
+def _prune_expired_sessions() -> None:
+    """Remove sessions that have expired. Called on every write to keep the store bounded."""
+    now = time.monotonic()
+    expired = [sid for sid, data in _IN_MEMORY_SESSIONS.items() if data["expires_at"] < now]
+    for sid in expired:
+        del _IN_MEMORY_SESSIONS[sid]
+    # If still over limit after pruning, evict the oldest entries
+    if len(_IN_MEMORY_SESSIONS) > MAX_SESSIONS:
+        oldest = sorted(_IN_MEMORY_SESSIONS, key=lambda sid: _IN_MEMORY_SESSIONS[sid]["expires_at"])
+        for sid in oldest[: len(_IN_MEMORY_SESSIONS) - MAX_SESSIONS]:
+            del _IN_MEMORY_SESSIONS[sid]
 
 
 class SequenceRule(BaseRule):
@@ -104,9 +124,9 @@ class SequenceRule(BaseRule):
                 history_set = set(history)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Redis sequence history fallback to in-memory: {e!s}")
-                history_set = set(_IN_MEMORY_SESSIONS.get(session_id, []))
+                history_set = set(_IN_MEMORY_SESSIONS.get(session_id, {}).get("actions", []))
         else:
-            history_set = set(_IN_MEMORY_SESSIONS.get(session_id, []))
+            history_set = set(_IN_MEMORY_SESSIONS.get(session_id, {}).get("actions", []))
 
         missing_prereqs = [req for req in prerequisites if req not in history_set]
 
@@ -131,13 +151,23 @@ class SequenceRule(BaseRule):
         return True, None
 
     async def _record_action(self, redis_client: redis.Redis | None, session_id: str, action: str) -> None:
-        """Record completed action into Redis session history with in-memory fallback."""
+        """Record completed action into Redis session history with TTL-bounded in-memory fallback."""
         if redis_client is not None:
             try:
                 redis_key = f"session:sequence:{session_id}"
                 await redis_client.rpush(redis_key, action)
-                await redis_client.expire(redis_key, 3600)
+                await redis_client.expire(redis_key, SESSION_TTL_SECONDS)
                 return
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Failed to record action in Redis sequence: {e!s}")
-        _IN_MEMORY_SESSIONS[session_id].append(action)
+        # In-memory fallback: prune expired sessions, then upsert this session
+        _prune_expired_sessions()
+        if session_id not in _IN_MEMORY_SESSIONS:
+            _IN_MEMORY_SESSIONS[session_id] = {
+                "actions": [],
+                "expires_at": time.monotonic() + SESSION_TTL_SECONDS,
+            }
+        else:
+            # Refresh TTL on activity
+            _IN_MEMORY_SESSIONS[session_id]["expires_at"] = time.monotonic() + SESSION_TTL_SECONDS
+        _IN_MEMORY_SESSIONS[session_id]["actions"].append(action)

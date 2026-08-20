@@ -46,7 +46,14 @@ async def lifespan(app: FastAPI):
     """
     settings = get_settings()
 
-    # --- STARTUP ---
+    # --- Startup Warning: Insecure defaults ---
+    if settings.app_env != "development" and settings.waf_api_key == "dev-api-key-agentshield-2026":
+        import warnings
+        warnings.warn(
+            "[SECURITY] WAF_API_KEY is still the default dev value in a non-development environment!",
+            stacklevel=1,
+        )
+
     setup_logging(settings.log_level)
     logger = get_logger(__name__)
     logger.info(
@@ -110,9 +117,9 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"^https?://.*",
+        allow_origins=settings.cors_origins_list,  # Use explicit whitelist, never a wildcard
         allow_credentials=True,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 

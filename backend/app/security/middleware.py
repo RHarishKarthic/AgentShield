@@ -28,12 +28,29 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
 
-        # Security headers
+        # --- Security headers ---
+        # Prevent MIME-type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # Disallow embedding in iframes (clickjacking protection)
         response.headers["X-Frame-Options"] = "DENY"
+        # Legacy XSS filter (belt-and-suspenders for older browsers)
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Limit referrer information leakage
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # No caching of security-sensitive API responses
         response.headers["Cache-Control"] = "no-store"
+        # Content-Security-Policy: restrict resource loading to same origin
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self' ws: wss:"
+        )
+        # HSTS: enforce HTTPS for 1 year (only effective over TLS)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # Permissions-Policy: disable unused browser features
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
 
         return response
 

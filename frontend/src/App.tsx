@@ -66,15 +66,18 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
+    // Periodic full refresh every 30s for metrics and policy data.
+    // Real-time event additions come via WebSocket — no need to poll at 5s.
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
   }, [loadData]);
 
-  // Live WebSocket Event Handler
+  // Live WebSocket Event Handler — update local state directly without a full API round-trip
   const handleLiveEvent = useCallback((event: AuditEvent) => {
+    // Prepend the new event and cap at 200 to bound memory usage
     setRawEvents((prev) => [event, ...prev.slice(0, 199)]);
-    loadData();
-  }, [loadData]);
+    // Do NOT call loadData() here — that would trigger 3 API calls per WS message
+  }, []);
 
   const { status: wsStatus } = useWebSocket(handleLiveEvent);
 

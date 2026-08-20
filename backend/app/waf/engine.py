@@ -53,19 +53,27 @@ class PolicyEngine:
             # Fallback to default policy
             policy = await PolicyService.get_policy_by_id(db, "support-agent-policy")
 
-        policy_id = policy.policy_id if policy else "default-unrestricted"
-        policy_version = policy.version if policy else 1
+        policy_id = policy.policy_id if policy else "no-policy"
+        policy_version = policy.version if policy else 0
         policy_mode = policy.mode if policy else "enforcement"
 
         rule_results: dict[str, str] = {}
         blocked_reason: str | None = None
         blocked_rule_name: str | None = None
 
-        # 2. Agent Active Check (Mandatory base authentication/authorization)
+        # 2a. Fail-closed: If no policy is found, block immediately.
+        #     An agent with no policy should never be permitted to call tools.
+        if not policy:
+            rule_results["policy_lookup"] = "BLOCK"
+            blocked_reason = f"No security policy assigned or resolvable for agent '{agent.agent_id}'"
+            blocked_rule_name = "policy_lookup"
+
+        # 2b. Agent Active Check (Mandatory base authentication/authorization)
         if not agent.is_active:
             rule_results["authentication"] = "BLOCK"
-            blocked_reason = f"Agent '{agent.agent_id}' is deactivated"
-            blocked_rule_name = "authentication"
+            if not blocked_rule_name:
+                blocked_reason = f"Agent '{agent.agent_id}' is deactivated"
+                blocked_rule_name = "authentication"
         else:
             rule_results["authentication"] = "ALLOW"
 

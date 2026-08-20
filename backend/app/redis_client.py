@@ -16,6 +16,16 @@ from app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+
+def _safe_redis_url(url: str) -> str:
+    """
+    Strip credentials from a Redis URL for safe logging.
+    e.g., redis://:secret@host:6379/0 -> redis://**redacted**@host:6379/0
+    """
+    if "@" in url:
+        scheme_part, rest = url.split("@", 1)
+        return f"{scheme_part.split('://')[0]}://**redacted**@{rest}"
+    return url
 # Initialised during app startup
 _redis_client: redis.Redis | None = None
 
@@ -42,14 +52,15 @@ async def init_redis() -> None:
         await _redis_client.ping()
         logger.info(
             "Redis connection established successfully",
-            extra={"component": "redis", "url": url.split("@")[-1]},
+            extra={"component": "redis", "url": _safe_redis_url(url)},
         )
     except Exception as e:
+        # Use _safe_redis_url so credentials embedded in the URL are never written to logs
         logger.warning(
-            f"Redis connection failed on startup ({e}) — initializing local fallback instance",
-            extra={"component": "redis", "error": str(e)},
+            f"Redis connection failed on startup — initialising local fallback instance",
+            extra={"component": "redis", "url": _safe_redis_url(url), "error": type(e).__name__},
         )
-        # Initialize client without failing startup
+        # Initialise client without failing startup
         _redis_client = redis.from_url(url, decode_responses=True)
 
 

@@ -22,14 +22,20 @@ class ToolForwarder:
 
     @staticmethod
     def _build_target_url(tool: Tool, operation: str | None) -> str:
-        # Check environment variable overrides (e.g. inside Docker where tools are at http://tools:8001)
-        env_override = None
-        if tool.tool_id == "customer_database":
-            env_override = os.getenv("TOOL_CUSTOMER_URL")
-        elif tool.tool_id == "email_service":
-            env_override = os.getenv("TOOL_EMAIL_URL")
-        elif tool.tool_id == "file_service":
-            env_override = os.getenv("TOOL_FILE_URL")
+        # Convention-based env var override: TOOL_{TOOL_ID_UPPER}_URL
+        # e.g., customer_database -> TOOL_CUSTOMER_DATABASE_URL
+        # This allows adding new tools without modifying forwarder code.
+        env_var_name = f"TOOL_{tool.tool_id.upper()}_URL"
+        env_override = os.getenv(env_var_name)
+
+        # Legacy single-prefix fallbacks kept for backwards compatibility
+        if env_override is None:
+            _legacy = {
+                "customer_database": os.getenv("TOOL_CUSTOMER_URL"),
+                "email_service": os.getenv("TOOL_EMAIL_URL"),
+                "file_service": os.getenv("TOOL_FILE_URL"),
+            }
+            env_override = _legacy.get(tool.tool_id)
 
         base = (env_override or tool.endpoint_url).rstrip("/")
         if operation:

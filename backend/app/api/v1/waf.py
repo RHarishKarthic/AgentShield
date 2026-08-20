@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_request_id
 from app.redis_client import get_redis
 from app.schemas.waf import ToolCallRequest, ToolCallResponse
+from app.security.authentication import require_waf_api_key
 from app.waf.llm import AVAILABLE_TOOLS, get_llm_provider
 from app.waf.proxy import WAFProxy
 
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/waf", tags=["WAF Gateway"])
 
 class AgentPromptRequest(BaseModel):
     prompt: str = Field(..., description="Natural language prompt for the AI agent")
+    agent_id: str = Field(default="support-agent", description="Agent ID to run the prompt as")
     provider: str = Field(default="auto", description="LLM provider: groq, openai, ollama, or auto")
     api_key: str | None = Field(default=None, description="Optional API key for Groq or OpenAI")
     model: str | None = Field(default=None, description="Optional LLM model override")
@@ -76,12 +78,13 @@ async def intercept_tool_call(
 @router.post(
     "/prompt",
     summary="Execute Agentic Prompt through Live LLM and WAF",
-    description="Accepts a natural language instruction, generates tool calling reasoning via Cloud/Local LLM, and passes the resulting invocation through AgentShield WAF.",
+    description="Accepts a natural language instruction, generates tool calling reasoning via Cloud/Local LLM, and passes the resulting invocation through AgentShield WAF. Requires X-API-Key authentication.",
 )
 async def process_agent_prompt(
     payload: AgentPromptRequest,
     db: AsyncSession = Depends(get_db),
     request_id: str = Depends(get_request_id),
+    _: str = Depends(require_waf_api_key),  # Enforce WAF API key auth
 ):
     """
     Live Agentic Reasoning & WAF Interception Pipeline:
@@ -124,9 +127,9 @@ async def process_agent_prompt(
             "final_answer": llm_decision.get("final_answer", "Task completed."),
         }
 
-    # Step 2: Intercept through WAF Proxy
+    # Step 2: Intercept through WAF Proxy using the agent_id from the request payload
     tool_req = ToolCallRequest(
-        agent_id="support-agent",
+        agent_id=payload.agent_id,
         tool=llm_decision["tool"],
         operation=llm_decision.get("operation", "default"),
         parameters=llm_decision.get("parameters", {}),

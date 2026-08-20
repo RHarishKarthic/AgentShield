@@ -5,10 +5,10 @@ Manages persistent storage of all intercepted tool calls in PostgreSQL,
 executes parameterized queries, and broadcasts live events over WebSockets.
 """
 
-import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import JSON, DateTime, Float, Integer, String, case, desc, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.sanitizer import sanitize_parameters
@@ -41,7 +41,7 @@ class AuditService:
         """
         Create, persist, and broadcast an audit event for an intercepted tool call.
         """
-        event_id = f"evt_{secrets.token_hex(8)}"
+        event_id = f"evt_{uuid.uuid4().hex}"
         sanitized_params = sanitize_parameters(request.parameters)
 
         event = AuditEvent(
@@ -177,6 +177,9 @@ class AuditService:
         """
         Compute real-time aggregated metrics for the security dashboard.
         Supports time filtering (1h, 24h, 7d, all).
+
+        Uses a single GROUP BY query instead of 6 separate COUNT queries
+        to minimise database round-trips and connection overhead.
         """
         now = datetime.now(timezone.utc)
         where_filter = None
@@ -187,32 +190,26 @@ class AuditService:
         elif time_range == "7d":
             where_filter = AuditEvent.created_at >= (now - timedelta(days=7))
 
-        # Total counts by decision
-        stmt_total = select(func.count()).select_from(AuditEvent)
+        # --- Single GROUP BY query for all decision counts ---
+        stmt_counts = select(AuditEvent.decision, func.count().label("cnt")).group_by(AuditEvent.decision)
         if where_filter is not None:
-            stmt_total = stmt_total.where(where_filter)
-        total_res = await db.execute(stmt_total)
-        total = total_res.scalar_one()
+            stmt_counts = stmt_counts.where(where_filter)
+        counts_res = await db.execute(stmt_counts)
 
-        stmt_allow = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "ALLOW")
-        if where_filter is not None:
-            stmt_allow = stmt_allow.where(where_filter)
-        allow_res = await db.execute(stmt_allow)
-        allowed = allow_res.scalar_one()
+        total = 0
+        allowed = 0
+        blocked = 0
+        shadow = 0
+        for decision, cnt in counts_res.all():
+            total += cnt
+            if decision == "ALLOW":
+                allowed = cnt
+            elif decision == "BLOCK":
+                blocked = cnt
+            elif decision == "SHADOW_WOULD_BLOCK":
+                shadow = cnt
 
-        stmt_block = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "BLOCK")
-        if where_filter is not None:
-            stmt_block = stmt_block.where(where_filter)
-        block_res = await db.execute(stmt_block)
-        blocked = block_res.scalar_one()
-
-        stmt_shadow = select(func.count()).select_from(AuditEvent).where(AuditEvent.decision == "SHADOW_WOULD_BLOCK")
-        if where_filter is not None:
-            stmt_shadow = stmt_shadow.where(where_filter)
-        shadow_res = await db.execute(stmt_shadow)
-        shadow = shadow_res.scalar_one()
-
-        # Blocks by rule breakdown
+        # --- Blocks by rule breakdown (single query) ---
         rule_breakdown = MetricRuleBreakdown()
         stmt_rule_counts = (
             select(AuditEvent.blocked_by_rule, func.count())
@@ -226,13 +223,13 @@ class AuditService:
             if hasattr(rule_breakdown, rule_name):
                 setattr(rule_breakdown, rule_name, count)
 
-        # Requests in last minute (throughput)
+        # --- Requests in last minute (throughput) ---
         one_min_ago = now - timedelta(minutes=1)
         stmt_rpm = select(func.count()).select_from(AuditEvent).where(AuditEvent.created_at >= one_min_ago)
         rpm_res = await db.execute(stmt_rpm)
         rpm = float(rpm_res.scalar_one())
 
-        # Active agents and tools count
+        # --- Active agent and tool counts ---
         agent_cnt_res = await db.execute(select(func.count()).select_from(Agent).where(Agent.is_active.is_(True)))
         active_agents = agent_cnt_res.scalar_one()
 
