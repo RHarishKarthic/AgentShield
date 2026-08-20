@@ -57,7 +57,7 @@ async def init_redis() -> None:
     except Exception as e:
         # Use _safe_redis_url so credentials embedded in the URL are never written to logs
         logger.warning(
-            f"Redis connection failed on startup — initialising local fallback instance",
+            "Redis connection failed on startup — initialising local fallback instance",
             extra={"component": "redis", "url": _safe_redis_url(url), "error": type(e).__name__},
         )
         # Initialise client without failing startup

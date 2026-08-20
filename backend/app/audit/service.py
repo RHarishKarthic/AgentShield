@@ -8,7 +8,7 @@ executes parameterized queries, and broadcasts live events over WebSockets.
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, case, desc, func, literal_column, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.sanitizer import sanitize_parameters

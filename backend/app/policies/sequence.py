@@ -7,7 +7,6 @@ without prior customer authentication).
 """
 
 import time
-from collections import defaultdict
 from typing import Any
 
 import redis.asyncio as redis
